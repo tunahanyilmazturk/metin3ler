@@ -63,12 +63,10 @@ function isPlayerSave(value: unknown): value is PlayerSave {
 }
 
 function isQuestSave(value: unknown): value is QuestSave {
-  if (!isRecord(value) || !Number.isInteger(value.index) || !Number.isInteger(value.progress) || typeof value.accepted !== 'boolean') return false;
-  const index = value.index as number, progress = value.progress as number;
-  if (index < 0 || index > QUESTS.length || progress < 0) return false;
-  const quest = QUESTS[index];
-  if (!quest) return progress === 0 && !value.accepted;
-  return progress <= quest.count && (value.accepted || progress === 0);
+  if (!isRecord(value) || !Number.isInteger(value.progress) || (value.progress as number) < 0 || typeof value.accepted !== 'boolean') return false;
+  const idOk = typeof value.id === 'string' && (value.id === 'done' || QUESTS.some((q) => q.id === value.id));
+  const indexOk = Number.isInteger(value.index) && (value.index as number) >= 0;
+  return idOk || indexOk;
 }
 
 function isSaveData(value: unknown): value is SaveData {

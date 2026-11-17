@@ -3,7 +3,7 @@ import { clamp, damp, lerp } from '../core/utils';
 import { CreatureModel, joint, mat, part } from './model';
 import type { TexPair } from '../render/textures';
 
-export type WeaponKind = 'sword' | 'dagger' | 'staff' | 'axe' | 'club' | 'none';
+export type WeaponKind = 'sword' | 'dagger' | 'staff' | 'axe' | 'club' | 'spear' | 'none';
 
 export interface HumanLook {
   skin: number;
@@ -215,6 +215,13 @@ export class Humanoid implements CreatureModel {
       part(new THREE.CylinderGeometry(0.02, 0.024, 0.9, 8), wood, g, 0, 0.3, 0);
       part(new THREE.BoxGeometry(0.02, 0.28, 0.3), steel, g, 0, 0.66, 0.13);
       g.rotation.x = 1.6;
+    } else if (kind === 'spear') {
+      part(new THREE.CylinderGeometry(0.018, 0.024, 1.7, 8), wood, g, 0, 0.32, 0);
+      part(new THREE.SphereGeometry(0.035, 8, 6), gold, g, 0, 1.22, 0);
+      const tip = part(new THREE.CylinderGeometry(0.055, 0.008, 0.5, 6), steel, g, 0, 1.5, 0);
+      tip.scale.set(1, 1, 0.4);
+      part(new THREE.BoxGeometry(0.16, 0.03, 0.03), gold, g, 0, 1.22, 0);
+      g.rotation.x = 0.35;
     } else if (kind === 'club') {
       part(new THREE.CylinderGeometry(0.11, 0.04, 1.2, 8), wood, g, 0, 0.45, 0);
       for (let i = 0; i < 6; i++) {

@@ -99,6 +99,7 @@ export class UI {
       this.log('Savaşta yenik düştün.', 'warn');
       setTimeout(() => this.death.classList.remove('hidden'), 1200);
     });
+    ev.on('playerRespawned', () => this.death.classList.add('hidden'));
     ev.on('levelUp', (lvl: number) => this.banner(`SEVİYE ${lvl}`));
     ev.on('changed', () => { this.slow = 0; });
     ev.on('autoHuntChanged', () => this.syncAutoHuntButton());
@@ -257,7 +258,8 @@ export class UI {
   }
 
   openNpc(npc: Npc) {
-    this.windows.show(npc.id === 'elder' ? 'quest' : npc.id === 'merchant' ? 'shop' : 'smith');
+    const win = npc.id === 'elder' ? 'quest' : npc.id === 'smith' ? 'smith' : 'shop';
+    this.windows.show(win, npc.id);
   }
 
   log(msg: string, cls = '') {
@@ -341,7 +343,7 @@ export class UI {
       const html = !q ? '<b>Tüm görevler tamamlandı</b>'
         : !g.quests.accepted ? `<b>${q.title}</b><span>Bilge Aksakal ile konuş</span>`
         : g.quests.complete ? `<b>${q.title}</b><span class="done">Tamamlandı — Bilge Aksakal'a dön</span>`
-        : `<b>${q.title}</b><span>${q.targetName}: ${g.quests.progress} / ${q.count}</span>`;
+        : `<b>${q.title}</b><span>${q.targetName}: ${g.quests.progressNow()} / ${q.count}</span>`;
       if ((tr as any)._h !== html) { (tr as any)._h = html; tr.innerHTML = html; }
 
       const buffs = p.buffs.map((b) => `<span>${SKILLS[b.id].name} ${Math.ceil(b.t)}s</span>`).join('');

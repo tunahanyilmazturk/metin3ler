@@ -169,6 +169,7 @@ export class Game {
 
   interact(npc: Npc) {
     this.audio.click();
+    this.events.emit('npcTalk', npc);
     this.ui.openNpc(npc);
   }
 

@@ -95,6 +95,7 @@ export class Loot {
     g.scene.remove(d.group);
     d.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) (m.material as THREE.Material).dispose(); });
     this.drops.splice(i, 1);
+    g.events.emit('lootPicked', { gold: d.gold, item: d.item });
     g.events.emit('changed');
     return true;
   }

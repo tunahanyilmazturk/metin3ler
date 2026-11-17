@@ -1,4 +1,5 @@
 import { EquipSlot, ITEMS, MAX_PLUS, UPGRADE_CHANCE, isEquip, itemLabel, plusMult, upgradeCost } from '../data/items';
+import { INVENTORY_OPEN_SLOTS } from '../data/inventory';
 import type { Game } from '../game';
 
 export type ItemRef = { inv: number } | { equip: EquipSlot };
@@ -9,7 +10,7 @@ export class Economy {
 
   resolve(ref: ItemRef) {
     const p = this.game.player;
-    return 'inv' in ref ? p.inv[ref.inv] : p.equip[ref.equip];
+    return 'inv' in ref ? p.stackAt(ref.inv) : p.equip[ref.equip];
   }
 
   buy(id: string, count = 1) {
@@ -25,19 +26,44 @@ export class Economy {
   }
 
   sellPrice(i: number) {
-    const s = this.game.player.inv[i];
+    const s = this.game.player.stackAt(i);
     if (!s) return 0;
     return Math.max(1, Math.floor(ITEMS[s.id].price * 0.3 * plusMult(s.plus) * (1 + s.plus * 0.25))) * s.count;
   }
 
   sell(i: number) {
-    const g = this.game, p = g.player, s = p.inv[i];
+    const g = this.game, p = g.player, s = p.stackAt(i);
     if (!s) return;
     const price = this.sellPrice(i);
-    p.inv[i] = null;
+    p.removeAt(i);
     p.gold += price;
     g.audio.coin();
     g.events.emit('log', { msg: `Satıldı: ${itemLabel(s)} (+${price} Akçe)`, cls: 'gold' });
+    g.events.emit('changed');
+  }
+
+  /** Toplu satış: adi ekipmanlar ya da malzemeler (Ruh Kristali korunur). */
+  sellBulk(kind: 'equip0' | 'materials') {
+    const g = this.game, p = g.player;
+    const match = (id: string) => {
+      const d = ITEMS[id];
+      return kind === 'equip0' ? d.rarity === 0 && isEquip(d) : d.type === 'material' && id !== 'crystal';
+    };
+    let total = 0, count = 0;
+    for (let i = 0; i < INVENTORY_OPEN_SLOTS; i++) {
+      const s = p.stackAt(i);
+      if (!s || !match(s.id)) continue;
+      total += this.sellPrice(i);
+      count++;
+      p.removeAt(i);
+    }
+    if (!count) {
+      g.events.emit('log', { msg: 'Satılacak uygun eşya yok.', cls: 'warn' });
+      return;
+    }
+    p.gold += total;
+    g.audio.coin();
+    g.events.emit('log', { msg: `${count} eşya satıldı (+${total.toLocaleString('tr-TR')} Akçe)`, cls: 'gold' });
     g.events.emit('changed');
   }
 
