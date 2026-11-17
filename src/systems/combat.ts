@@ -47,7 +47,17 @@ export class Combat {
       ? { count: 10, color: 0xffe0a0, color2: 0xffffff, speed: 6, up: 2, life: 0.4, size: 0.3, gravity: 12 }
       : { count: crit ? 14 : 7, color: 0xff4030, color2: 0xffb080, speed: 4, up: 1.5, life: 0.4, size: 0.34, gravity: 8 });
     g.audio.hit(crit);
+    // Geri savrulma: taşlar ve patronlar ağır durur, sıradan düşmanlar vuruş yönüne itilir
+    const kb = e.isStone ? 0 : e.def.boss ? 0.05 : Math.min(0.34, 0.16 * mult);
+    if (kb > 0) {
+      const dx = e.pos.x - p.pos.x, dz = e.pos.z - p.pos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const nx = e.pos.x + (dx / d) * kb, nz = e.pos.z + (dz / d) * kb;
+      if (g.terrain.walkable(nx, nz)) { e.pos.x = nx; e.pos.z = nz; }
+    }
+    g.effects.flash(at, crit ? 0xffc060 : 0xff5838, crit ? 55 : 30, 0.1);
     e.damage(dmg, opts);
+    g.hitStop(!e.alive ? 0.11 : crit ? 0.085 : 0.045);
   }
 
   /** Oyuncunun önündeki koni içindeki düşmanlara vurur; vurulan sayısını döndürür. */

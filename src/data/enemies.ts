@@ -21,7 +21,7 @@ export interface EnemyDef {
 }
 
 const defs: EnemyDef[] = [
-  { id: 'wolf', name: 'Bozkurt', level: 2, hp: 85, atk: 15, def: 2, exp: 20, gold: [6, 16], speed: 5.4, aggro: 0, range: 1.9, attackCd: 1.5, radius: 0.6,
+  { id: 'wolf', name: 'Bozkurt', level: 2, hp: 85, atk: 15, def: 2, exp: 20, gold: [6, 16], speed: 5.4, aggro: 5, range: 1.9, attackCd: 1.5, radius: 0.6,
     drops: [{ id: 'pelt', chance: 0.45 }, { id: 'hp1', chance: 0.14 }, { id: 'boots1', chance: 0.03 }], respawn: 22 },
   { id: 'alpha_wolf', name: 'Sürü Lideri', level: 6, hp: 380, atk: 34, def: 6, exp: 110, gold: [40, 80], speed: 6, aggro: 14, range: 2.4, attackCd: 1.4, radius: 0.9,
     drops: [{ id: 'pelt', chance: 1 }, { id: 'neck1', chance: 0.2 }, { id: 'helm1', chance: 0.25 }, { id: 'hp1', chance: 0.6 }], respawn: 70 },

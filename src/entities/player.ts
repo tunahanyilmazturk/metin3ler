@@ -261,7 +261,7 @@ export class Player {
       if (ml > 0.01) {
         mx /= ml; mz /= ml;
         let sp = this.moveSpeed * (inp.down('ShiftLeft') ? 1.4 : 1);
-        if (this.attackT >= 0) sp *= 0.22;
+        if (this.attackT >= 0) sp *= 0.3;
         this.yaw = dampAngle(this.yaw, Math.atan2(mx, mz), 14, dt);
         this.tryMove(mx * sp * dt, mz * sp * dt);
         this.speedNow = sp;
@@ -447,6 +447,7 @@ export class Player {
     g.audio.hurt();
     g.events.emit('damageText', { pos: this.pos, y: 2, text: `-${dmg}`, cls: 'hurt' });
     g.events.emit('playerHurt');
+    g.camera.addShake(Math.min(0.4, 0.06 + (dmg / this.maxHp) * 1.5));
     g.particles.emit(this.pos.clone().setY(this.pos.y + 1.2), { count: 8, color: 0xff3020, speed: 3, life: 0.35, size: 0.3 });
     if (this.hp <= 0) {
       this.hp = 0;
@@ -462,6 +463,11 @@ export class Player {
 
   respawn() {
     this.alive = true;
+    const lost = Math.min(this.exp, Math.ceil(this.expNeed * 0.02));
+    if (lost > 0) {
+      this.exp -= lost;
+      this.game.events.emit('log', { msg: `Yenilgi bedeli: -${lost} tecrübe`, cls: 'warn' });
+    }
     this.pos.set(PLAYER_SPAWN.x, 0, PLAYER_SPAWN.z);
     this.yaw = Math.PI;
     this.game.camera.setView(0, 0.5, 11);

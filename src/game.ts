@@ -63,6 +63,10 @@ export class Game {
   fps = 60;
   private last = performance.now();
   private saveTimer = 0;
+  private hitStopT = 0;
+
+  /** Kısa vuruş donması: dünya anlık yavaşlar, vuruş daha ağır hissettirir. */
+  hitStop(t: number) { this.hitStopT = Math.max(this.hitStopT, t); }
   private menuCenter = new THREE.Vector3(0, VILLAGE_H + 2, 0);
   private v = new THREE.Vector3();
 
@@ -306,9 +310,12 @@ export class Game {
     this.time += dt;
     this.fps += (1 / Math.max(dt, 0.001) - this.fps) * 0.05;
 
+    const worldDt = dt * (this.hitStopT > 0 ? 0.12 : 1);
+    this.hitStopT = Math.max(0, this.hitStopT - dt);
+
     let focus: THREE.Vector3;
     if (this.started) {
-      this.updateWorld(dt);
+      this.updateWorld(worldDt);
       focus = this.player.pos;
       this.camera.update(dt, focus, this.input);
     } else {
