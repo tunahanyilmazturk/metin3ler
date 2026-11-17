@@ -3,6 +3,7 @@ import type { StatKey } from '../data/classes';
 import { EQUIP_SLOTS, ITEMS, MAX_PLUS, isEquip } from '../data/items';
 import type { ItemStack } from '../data/items';
 import { QUESTS } from '../data/quests';
+import { HORSES } from '../data/horses';
 import { INVENTORY_TOTAL_SLOTS } from '../data/inventory';
 import { DAY_NIGHT_MODES } from '../data/settings';
 import type { DayNightMode } from '../data/settings';
@@ -18,6 +19,7 @@ export interface SaveData {
   player: PlayerSave;
   quest: QuestSave;
   time: number;
+  vault?: (ItemStack | null)[];
 }
 
 export interface Settings { quality: Quality; muted: boolean; dayNight: DayNightMode }
@@ -53,6 +55,7 @@ function isPlayerSave(value: unknown): value is PlayerSave {
 
   const stats = value.stats;
   if (!isRecord(stats) || !STAT_KEYS.every((key) => Number.isInteger(stats[key]) && (stats[key] as number) >= 0)) return false;
+  if (value.horse !== undefined && value.horse !== null && (typeof value.horse !== 'string' || !Object.hasOwn(HORSES, value.horse))) return false;
   if (!Array.isArray(value.inv) || value.inv.length > INVENTORY_TOTAL_SLOTS || !value.inv.every((item) => item === null || isItemStack(item))) return false;
   const equip = value.equip;
   if (!isRecord(equip)) return false;
@@ -69,9 +72,15 @@ function isQuestSave(value: unknown): value is QuestSave {
   return idOk || indexOk;
 }
 
+const VAULT_SAVE_SLOTS = 60;
+
 function isSaveData(value: unknown): value is SaveData {
-  return isRecord(value) && value.v === 1 && isPlayerSave(value.player) &&
-    isQuestSave(value.quest) && isFiniteNumber(value.time);
+  if (!isRecord(value) || value.v !== 1 || !isPlayerSave(value.player) ||
+    !isQuestSave(value.quest) || !isFiniteNumber(value.time)) return false;
+  const vault = value.vault;
+  if (vault === undefined) return true;
+  return Array.isArray(vault) && vault.length <= VAULT_SAVE_SLOTS &&
+    vault.every((item) => item === null || isItemStack(item));
 }
 
 /** localStorage üzerinde kayıt/yükleme. */

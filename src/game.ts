@@ -22,6 +22,7 @@ import { Loot } from './systems/loot';
 import { QuestLog } from './systems/quests';
 import { SaveData, SaveSystem } from './systems/save';
 import { Spawner } from './systems/spawner';
+import { Vault } from './systems/vault';
 import { UI } from './ui/ui';
 import { Environment } from './world/environment';
 import { Terrain } from './world/terrain';
@@ -53,6 +54,7 @@ export class Game {
   economy!: Economy;
   spawner!: Spawner;
   quests!: QuestLog;
+  vault!: Vault;
   player!: Player;
   ui!: UI;
   enemies: Enemy[] = [];
@@ -154,6 +156,7 @@ export class Game {
   private begin(player: Player, save?: SaveData) {
     this.player = player;
     this.quests = new QuestLog(this, save?.quest);
+    this.vault = new Vault(this, save?.vault);
     this.camera.setView(0, 0.5, 11);
     this.camera.snap(player.pos);
     this.started = true;
@@ -164,13 +167,37 @@ export class Game {
 
   saveNow() {
     if (!this.started) return;
-    SaveSystem.save({ v: 1, player: this.player.serialize(), quest: this.quests.serialize(), time: this.env.time });
+    SaveSystem.save({ v: 1, player: this.player.serialize(), quest: this.quests.serialize(), time: this.env.time, vault: this.vault.serialize() });
   }
 
   interact(npc: Npc) {
     this.audio.click();
     this.events.emit('npcTalk', npc);
     this.ui.openNpc(npc);
+  }
+
+  /** Rehber ışınlaması: oyuncuyu güvenli bir bölge noktasına taşır. */
+  teleport(x: number, z: number, cost = 0) {
+    const p = this.player;
+    if (!this.terrain.walkable(x, z)) {
+      this.events.emit('log', { msg: 'Oraya gidilemiyor.', cls: 'warn' });
+      return false;
+    }
+    if (cost > 0 && p.gold < cost) {
+      this.events.emit('log', { msg: 'Yeterli akçen yok.', cls: 'warn' });
+      this.audio.fail();
+      return false;
+    }
+    if (cost > 0) p.gold -= cost;
+    this.autoHunt.stop();
+    p.intent = null;
+    p.target = null;
+    p.pos.set(x, this.terrain.getHeight(x, z), z);
+    this.effects.ring(p.pos.clone(), 1.4, 0x8fd4ff, 0.6);
+    this.camera.snap(p.pos);
+    this.audio.pickup();
+    this.events.emit('changed');
+    return true;
   }
 
   onEnemyKilled(e: Enemy) {

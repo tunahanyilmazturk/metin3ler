@@ -67,6 +67,25 @@ export class Economy {
     g.events.emit('changed');
   }
 
+  /** Kuyumcu malzeme değişimi: N malzeme karşılığı kristal/takı verir. */
+  exchange(give: { id: string; count: number }, get: { id: string; count: number }) {
+    const g = this.game, p = g.player;
+    if (p.countItem(give.id) < give.count) {
+      g.events.emit('log', { msg: `Yeterli ${ITEMS[give.id].name} yok.`, cls: 'warn' });
+      g.audio.fail();
+      return;
+    }
+    if (!p.fitsAll([get.id])) {
+      g.events.emit('log', { msg: 'Değişim için envanterinde yer aç.', cls: 'warn' });
+      return;
+    }
+    p.removeItem(give.id, give.count);
+    p.addItem(get.id, get.count, 0, true);
+    g.audio.coin();
+    g.events.emit('log', { msg: `Değişim: ${ITEMS[give.id].name} x${give.count} → ${ITEMS[get.id].name} x${get.count}`, cls: 'gold' });
+    g.events.emit('changed');
+  }
+
   upgradeInfo(ref: ItemRef) {
     const s = this.resolve(ref);
     if (!s) return null;

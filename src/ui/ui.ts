@@ -258,7 +258,13 @@ export class UI {
   }
 
   openNpc(npc: Npc) {
-    const win = npc.id === 'elder' ? 'quest' : npc.id === 'smith' ? 'smith' : 'shop';
+    const win = npc.id === 'elder' ? 'quest'
+      : npc.id === 'smith' ? 'smith'
+      : npc.id === 'keeper' ? 'vault'
+      : npc.id === 'guide' ? 'travel'
+      : npc.id === 'innkeeper' ? 'inn'
+      : npc.id === 'stablemaster' ? 'stable'
+      : 'shop';
     this.windows.show(win, npc.id);
   }
 

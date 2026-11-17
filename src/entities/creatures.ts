@@ -15,6 +15,10 @@ export interface QuadLook {
   ears: number;
   tail: number;
   tusks?: boolean;
+  saddle?: boolean;
+  mane?: boolean;
+  /** Savaş atı zırhı rengi */
+  barding?: number;
   scale: number;
 }
 
@@ -71,6 +75,28 @@ export class Quadruped implements CreatureModel {
     if (l.tusks) {
       // Sırt yelesi
       for (let i = 0; i < 5; i++) part(new THREE.ConeGeometry(l.rad * 0.22, l.rad * 0.6, 5), dark, this.body, 0, l.rad * 1.05, l.len * (0.4 - i * 0.18), false);
+    }
+    if (l.mane) {
+      // Boyun ve baş üstünde yele tutamları
+      for (let i = 0; i < 5; i++)
+        part(new THREE.ConeGeometry(l.rad * 0.14, l.rad * 0.55, 5), dark, this.headJ, 0, l.rad * (0.5 - i * 0.3), -l.rad * (0.55 + i * 0.28), false).rotation.x = 0.7;
+      part(new THREE.ConeGeometry(l.head * 0.16, l.head * 0.5, 5), dark, this.headJ, 0, l.head * 0.55, l.head * 0.1, false).rotation.x = 0.3;
+    }
+    if (l.saddle) {
+      // Eyer battaniyesi ve eyer
+      part(new THREE.BoxGeometry(l.rad * 1.5, 0.07, l.rad * 2.3), mat(l.barding ?? 0x7a3a28, 0.8), this.body, 0, l.rad * 0.86, -l.len * 0.02, false);
+      part(new THREE.BoxGeometry(l.rad * 0.9, 0.13, l.rad * 1.15), mat(0x3a2a1c, 0.75), this.body, 0, l.rad * 0.99, -l.len * 0.02, false);
+      for (const sx of [-1, 1]) {
+        const st = part(new THREE.CylinderGeometry(l.rad * 0.05, l.rad * 0.05, l.rad * 0.8, 6), mat(0x2a1e12, 0.6), this.body, sx * l.rad * 0.72, l.rad * 0.4, -l.len * 0.02, false);
+        st.rotation.z = sx * 0.15;
+        part(new THREE.TorusGeometry(l.rad * 0.16, l.rad * 0.04, 6, 10), mat(0x8a7a4a, 0.4, 0.6), this.body, sx * l.rad * 0.8, l.rad * 0.05, -l.len * 0.02, false);
+      }
+    }
+    if (l.barding) {
+      // Savaş atı zırhı: göğüs plakası ve alınlık
+      const plate = mat(l.barding, 0.45, 0.7);
+      part(new THREE.BoxGeometry(l.rad * 1.2, l.rad * 0.9, l.rad * 0.3), plate, this.body, 0, l.rad * 0.4, l.len * 0.48, false);
+      part(new THREE.BoxGeometry(l.head * 0.7, l.head * 0.9, l.head * 0.2), plate, this.headJ, 0, l.head * 0.35, l.head * 1.05, false);
     }
 
     this.tailJ = joint(this.body, 0, l.rad * 0.35, -l.len / 2 - l.rad * 0.7);
@@ -378,4 +404,9 @@ export const NPC_LOOKS: Record<string, HumanLook> = {
   weaponsmith: { ...HUMAN_BASE, skin: 0xc99a6e, cloth: 0x4a2f22, armor: 0x6e5a3a, armorMetal: 0.7, armorRough: 0.4, hair: 0x1a120c, weapon: 'sword', scale: 1.02, bulk: 1.16 },
   armorer: { ...HUMAN_BASE, skin: 0xd8b08e, cloth: 0x5a4248, armor: 0x8a6d4a, armorMetal: 0.5, armorRough: 0.5, hair: 0x241a10, weapon: 'club', scale: 0.98, bulk: 1.05 },
   smith: { ...HUMAN_BASE, skin: 0xb5835f, cloth: 0x3b2c22, armor: 0x44444a, armorMetal: 0.8, armorRough: 0.5, hair: 0x120d0a, weapon: 'none', scale: 1.08, bulk: 1.22 },
+  jeweler: { ...HUMAN_BASE, skin: 0xd8b090, cloth: 0x6a3a6e, armor: 0xc9a83a, armorMetal: 0.9, armorRough: 0.25, hair: 0x2a1c12, weapon: 'none', scale: 0.97 },
+  keeper: { ...HUMAN_BASE, skin: 0xcf9d7a, cloth: 0x3a4a5e, armor: 0x5a6a7a, armorMetal: 0.5, armorRough: 0.5, hair: 0x4a3020, weapon: 'staff', robe: true, scale: 0.98 },
+  innkeeper: { ...HUMAN_BASE, skin: 0xdcb08c, cloth: 0x7a4a2a, armor: 0xa08050, armorMetal: 0.1, armorRough: 0.7, hair: 0x5a3a20, weapon: 'none', scale: 0.96, bulk: 1.1 },
+  guide: { ...HUMAN_BASE, skin: 0xc99a70, cloth: 0x4a5a3a, armor: 0x6a5a3a, armorMetal: 0.2, armorRough: 0.7, hair: 0x2a2018, weapon: 'spear', scale: 1.0 },
+  stablemaster: { ...HUMAN_BASE, skin: 0xbb8a60, cloth: 0x5a4a30, armor: 0x7a5a30, armorMetal: 0.25, armorRough: 0.6, hair: 0x3a2818, weapon: 'none', scale: 1.04, bulk: 1.12 },
 };

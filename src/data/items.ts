@@ -139,7 +139,21 @@ export const WEAPON_STOCK = [
 export const ARMOR_STOCK = [
   'armor1', 'armor2', 'armor3', 'helm1', 'helm2', 'boots1', 'boots2',
 ];
+/** Kuyumcunun sattığı takılar; üst kademeler yalnızca düşüşle bulunur */
+export const JEWEL_STOCK = [
+  'ring1', 'ring2', 'neck1', 'neck2', 'neck3',
+];
 /** NPC kimliğine göre dükkân stoğu */
 export const SHOPS: Record<string, string[]> = {
-  merchant: SHOP_STOCK, weaponsmith: WEAPON_STOCK, armorer: ARMOR_STOCK,
+  merchant: SHOP_STOCK, weaponsmith: WEAPON_STOCK, armorer: ARMOR_STOCK, jeweler: JEWEL_STOCK,
 };
+
+/** Kuyumcudaki malzeme değişim teklifleri: ver → al */
+export const EXCHANGES: { give: { id: string; count: number }; get: { id: string; count: number } }[] = [
+  { give: { id: 'pelt', count: 8 }, get: { id: 'crystal', count: 1 } },
+  { give: { id: 'tusk', count: 5 }, get: { id: 'crystal', count: 1 } },
+  { give: { id: 'medal', count: 6 }, get: { id: 'crystal', count: 2 } },
+  { give: { id: 'claw', count: 3 }, get: { id: 'crystal', count: 2 } },
+  { give: { id: 'core', count: 2 }, get: { id: 'crystal', count: 3 } },
+  { give: { id: 'ogrehorn', count: 1 }, get: { id: 'crystal', count: 4 } },
+];

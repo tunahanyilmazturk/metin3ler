@@ -221,15 +221,34 @@ kbd {
 .win-smith, .win-quest { left: 358px; top: 92px; width: 400px; }
 .win-settings { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 440px; }
 .win-autohunt { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(430px, calc(100vw - 24px)); max-height: calc(100vh - 24px); z-index: 10; }
-@media (max-width: 1180px) { .win-smith, .win-quest { left: 14px; z-index: 2; } }
+.win-vault { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(780px, calc(100vw - 24px)); max-height: calc(100vh - 24px); z-index: 4; }
+.win-travel, .win-inn, .win-stable { left: 358px; top: 92px; width: 400px; }
+.stable-status { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; margin-top: 8px; background: #2a2214; border: 1px solid #8a6d38; border-radius: 5px; }
+.stable-status .nm { display: flex; flex-direction: column; }
+.stable-status .nm small { color: #a89878; }
+.vault-grids { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.vault-grids .inventory-grid { border: 1px solid #6a5325; border-radius: 4px; padding: 6px; background: #181410cc; }
+.travel-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.travel-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 8px; padding: 7px 8px; background: #221c12; border: 1px solid #4a3a20; border-radius: 5px; }
+.travel-row.active { border-color: #8a6d38; background: #2a2214; }
+.travel-row .nm { display: flex; flex-direction: column; min-width: 0; }
+.travel-row .nm small { color: #a89878; }
+.travel-row .price { color: #f0c040; font-weight: 700; font-size: 12px; }
+.travel-row .price.no { color: #b05040; }
+.travel-row button { padding: 6px 12px; }
+.inn-box { margin-top: 8px; }
+.dim-note { color: #8a7a5a; font-size: 11px; margin-top: 8px; }
+.exchange-list { max-height: 180px; }
+.win-inn h4, .win-vault h4 { margin: 12px 0 6px; color: #d8b878; font-size: 13px; }
+@media (max-width: 1180px) { .win-smith, .win-quest, .win-travel, .win-inn, .win-stable { left: 14px; z-index: 2; } }
 @media (max-width: 800px) {
   .win-inv, .win-inv.with-service {
     left: 50%; right: auto; top: 50%; bottom: auto; width: min(520px, calc(100vw - 24px));
     height: min(440px, calc(100vh - 24px)); max-height: none; transform: translate(-50%, -50%);
   }
   .win-inv.with-service { top: 8px; height: calc(54vh - 12px); transform: translateX(-50%); }
-  .win-smith, .win-quest { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 42vh; z-index: 6; }
-  .win-shop { left: 8px; right: 8px; top: auto; bottom: 8px; transform: none; width: auto; max-height: 78vh; z-index: 6; }
+  .win-smith, .win-quest, .win-travel, .win-inn, .win-stable { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 42vh; z-index: 6; }
+  .win-shop, .win-vault { left: 8px; right: 8px; top: auto; bottom: 8px; transform: none; width: auto; max-height: 78vh; z-index: 6; }
   .shop-layout { grid-template-columns: 1fr; }
   .shop-sell { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 10px; }
 }

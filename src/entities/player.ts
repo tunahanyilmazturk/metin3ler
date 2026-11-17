@@ -8,6 +8,8 @@ import {
   InvCell, anchorOf, asStack, canPlaceAt, clearAt, compareItems, findSpace, hasSpaceFor, isLink, itemSize, placeAt,
 } from '../data/inventory';
 import { PLAYER_SPAWN, WORLD_HALF } from '../data/world';
+import { HORSES } from '../data/horses';
+import { Quadruped } from './creatures';
 import { Humanoid } from './humanoid';
 import { disposeModel } from './model';
 import type { Enemy } from './enemy';
@@ -30,6 +32,7 @@ export interface PlayerSave {
   equip: Record<EquipSlot, ItemStack | null>;
   x: number;
   z: number;
+  horse?: string | null;
 }
 
 type Intent = { kind: 'attack'; enemy: Enemy } | { kind: 'npc'; npc: Npc } | { kind: 'move'; x: number; z: number } | null;
@@ -54,6 +57,11 @@ export class Player {
   alive = true;
   target: Enemy | null = null;
   intent: Intent = null;
+  /** Seyisten alınan binek ve biniş durumu. */
+  horseId: string | null = null;
+  mounted = false;
+  private horse: Quadruped | null = null;
+  private mountCd = 0;
   cooldowns = [0, 0, 0, 0];
   buffs: Buff[] = [];
   readonly radius = 0.45;
@@ -80,6 +88,7 @@ export class Player {
     if (save) {
       this.level = save.level; this.exp = save.exp; this.statPoints = save.statPoints;
       this.stats = { ...save.stats }; this.gold = save.gold;
+      this.horseId = save.horse && Object.hasOwn(HORSES, save.horse) ? save.horse : null;
       this.inv = new Array(INV_SIZE).fill(null);
       save.inv.slice(0, INV_SIZE).forEach((item, i) => { if (item) this.restoreStack(i, item); });
       this.equip = { ...this.equip, ...save.equip };
@@ -106,6 +115,7 @@ export class Player {
       stats: this.stats, gold: this.gold, hp: this.hp, mp: this.mp,
       inv: this.inv.map((c) => (c && isLink(c) ? null : c)) as (ItemStack | null)[], equip: this.equip,
       x: this.alive ? this.pos.x : PLAYER_SPAWN.x, z: this.alive ? this.pos.z : PLAYER_SPAWN.z,
+      horse: this.horseId,
     };
   }
 
@@ -143,6 +153,7 @@ export class Player {
     this.def = Math.round((st.vit * 0.7 + this.level * 0.5 + eq.def) * (1 + b.def));
     this.crit = Math.min(60, 5 + st.dex * 0.35 + eq.crit + b.crit);
     this.moveSpeed = 6.4 * (1 + eq.speed / 100) * (1 + b.speed);
+    if (this.mounted && this.horseId) this.moveSpeed *= HORSES[this.horseId]?.speed ?? 1;
     this.atkSpeed = Math.min(1.6, 1 + st.dex * 0.006);
     this.hp = Math.min(this.hp, this.maxHp);
     this.mp = Math.min(this.mp, this.maxMp);
@@ -170,8 +181,51 @@ export class Player {
     });
     this.model.root.position.copy(this.pos);
     this.model.root.rotation.y = this.yaw;
+    this.model.riding = this.mounted;
     this.game.scene.add(this.model.root);
     if (!this.alive) this.model.die();
+  }
+
+  // ------------------------------------------------------------------ binek
+
+  get horseDef() { return this.horseId ? HORSES[this.horseId] : undefined; }
+
+  toggleMount() {
+    if (!this.horseId || !this.alive || this.mountCd > 0) return;
+    if (this.mounted) this.dismount(); else this.mount();
+  }
+
+  mount() {
+    const def = this.horseDef;
+    if (!def || this.mounted || !this.alive || this.mountCd > 0) return;
+    if (!this.horse) this.horse = new Quadruped(def.look, this.game.tex);
+    this.mounted = true;
+    this.mountCd = 0.5;
+    this.horse.revive();
+    this.horse.root.position.copy(this.pos);
+    this.horse.root.rotation.y = this.yaw;
+    this.game.scene.add(this.horse.root);
+    this.model.riding = true;
+    this.recalc();
+    this.game.audio.click();
+    this.game.effects.ring(this.pos.clone(), 1.6, 0xd0b070, 0.4);
+    this.game.events.emit('log', { msg: `${def.name} sırtındasın.`, cls: 'good' });
+    this.game.events.emit('changed');
+  }
+
+  dismount(silent = false) {
+    if (!this.mounted) return;
+    this.mounted = false;
+    this.mountCd = 0.5;
+    if (this.horse) this.game.scene.remove(this.horse.root);
+    this.model.riding = false;
+    this.model.root.position.copy(this.pos);
+    this.recalc();
+    if (!silent) {
+      this.game.audio.click();
+      this.game.events.emit('log', { msg: 'Attan indin.' });
+    }
+    this.game.events.emit('changed');
   }
 
   // ---------------------------------------------------------------- güncelleme
@@ -180,6 +234,7 @@ export class Player {
     const g = this.game;
     this.sinceCombat += dt;
     this.potionCd = Math.max(0, this.potionCd - dt);
+    this.mountCd = Math.max(0, this.mountCd - dt);
     for (let i = 0; i < 4; i++) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     if (this.buffs.length) {
       let expired = false;
@@ -290,9 +345,16 @@ export class Player {
     for (let i = 0; i < 4; i++) if (inp.hit(`Digit${i + 1}`)) this.useSkill(i);
     if (inp.hit('Digit5')) this.usePotion('hp');
     if (inp.hit('Digit6')) this.usePotion('mp');
+    if (inp.hit('KeyR')) this.toggleMount();
 
     this.pos.y = g.terrain.getHeight(this.pos.x, this.pos.z);
     this.model.root.position.copy(this.pos);
+    if (this.mounted && this.horse) {
+      this.horse.root.position.copy(this.pos);
+      this.horse.root.rotation.y = this.yaw;
+      this.model.root.position.y = this.pos.y + 0.66;
+      this.horse.update(dt, this.speedNow);
+    }
     if (this.spin > 0) this.spin = Math.max(0, this.spin - dt * 2.6);
     this.model.root.rotation.y = this.yaw + (this.spin > 0 ? (1 - this.spin) * Math.PI * 4 : 0);
     this.model.update(dt, this.speedNow);
@@ -460,6 +522,7 @@ export class Player {
       this.target = null;
       this.dash = null;
       this.attackT = -1;
+      this.dismount(true);
       this.model.die();
       g.events.emit('playerDied');
     }
@@ -745,6 +808,14 @@ export class Player {
     this.equip[slot] = null;
     this.recalc();
     this.refreshModel();
+    this.game.events.emit('changed');
+  }
+
+  /** Han yemeği gibi yetenek dışı geçici güçlendirme uygular. */
+  addBuff(id: string, def: NonNullable<SkillDef['buff']>, color = 0xf0c040) {
+    this.buffs = this.buffs.filter((b) => b.id !== id);
+    this.buffs.push({ id, t: def.dur, def, color });
+    this.recalc();
     this.game.events.emit('changed');
   }
 

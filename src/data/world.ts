@@ -66,6 +66,24 @@ export const NPCS = [
   { id: 'weaponsmith', name: 'Silahçı Turan', title: 'Silah Dükkânı', x: 12, z: -14, yaw: -Math.PI * 0.4 },
   { id: 'armorer', name: 'Zırhçı Selma', title: 'Zırh Dükkânı', x: -17, z: 11, yaw: Math.PI * 0.55 },
   { id: 'smith', name: 'Demirci Bora', title: 'Eşya Yükseltme', x: 17, z: -6, yaw: -Math.PI * 0.5 },
+  { id: 'jeweler', name: 'Kuyumcu Rafet', title: 'Kuyum Dükkânı', x: -19, z: -11, yaw: Math.PI * 0.45 },
+  { id: 'keeper', name: 'Kasadar Asude', title: 'Depo Görevlisi', x: 25, z: 9, yaw: -Math.PI * 0.6 },
+  { id: 'innkeeper', name: 'Hancı Gülsüm', title: 'Han', x: -8, z: -17, yaw: Math.PI * 0.2 },
+  { id: 'guide', name: 'Rehber Davut', title: 'Yol Rehberi', x: -4, z: 27, yaw: Math.PI },
+  { id: 'stablemaster', name: 'Seyis Rahmi', title: 'Ahır & Binek', x: 31, z: 19, yaw: -Math.PI * 0.65 },
 ] as const;
 
 export const PLAYER_SPAWN = { x: 0, z: 17 };
+
+/** Rehberin ışınlayabileceği bölge girişleri ve ücretleri. */
+export const TRAVEL_SPOTS = [
+  { name: 'Kuzey Çayırları', desc: 'Bozkurt ve yılan bölgesi', x: 8, z: -80, cost: 50 },
+  { name: 'Göl Kıyısı', desc: 'Bataklık yılanları ve Naja', x: 70, z: -45, cost: 100 },
+  { name: 'Batı Tarlaları', desc: 'Yaban domuzu ovaları', x: -110, z: -45, cost: 100 },
+  { name: 'Güney Ormanı', desc: 'Zehirli örümcek ağları', x: -40, z: 60, cost: 100 },
+  { name: 'Doğu Çayırları', desc: 'Yaban atı sürüleri', x: 160, z: 45, cost: 150 },
+  { name: 'Haydut Yolu', desc: 'Karaca\'nın adamları', x: 120, z: 120, cost: 200 },
+  { name: 'Kara Orman', desc: 'Gece kurtlarının yurdu', x: 200, z: -120, cost: 250 },
+  { name: 'Kadim Harabeler', desc: 'Taş muhafızlar', x: -115, z: 120, cost: 250 },
+  { name: 'Kayalık Çöl', desc: 'Akrep kumları', x: 250, z: -220, cost: 350 },
+];

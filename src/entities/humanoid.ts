@@ -77,6 +77,8 @@ export class Humanoid implements CreatureModel {
   private dead = false;
   private deadT = 0;
   private weaponKind: WeaponKind;
+  /** Binek üstündeyken bacaklar eyer pozu alır. */
+  riding = false;
 
   constructor(look: HumanLook) {
     this.weaponKind = look.weapon;
@@ -277,12 +279,23 @@ export class Humanoid implements CreatureModel {
     const breath = Math.sin(this.t * 1.7);
     const attackPulse = this.atkT >= 0 ? Math.sin(this.atkT * Math.PI) : 0;
 
-    this.legL.rotation.x = -s * A * mb - attackPulse * 0.16;
-    this.legR.rotation.x = s * A * mb + attackPulse * 0.08;
-    this.kneeL.rotation.x = (Math.max(0, c) * (0.7 + run * 0.6) + 0.08) * mb;
-    this.kneeR.rotation.x = (Math.max(0, -c) * (0.7 + run * 0.6) + 0.08) * mb;
-    this.hips.position.y = 0.96 - Math.abs(c) * 0.035 * mb * (0.6 + run) + breath * 0.004 - attackPulse * 0.018;
-    this.hips.rotation.y = s * 0.1 * mb + attackPulse * 0.06;
+    if (this.riding) {
+      // Eyer pozu: bacaklar iki yana açık ve öne kıvrık, dizler bükük
+      const bounce = moving ? Math.abs(c) * 0.05 : Math.sin(this.t * 1.7) * 0.008;
+      this.legL.rotation.set(-1.05, 0, 0.55);
+      this.legR.rotation.set(-1.05, 0, -0.55);
+      this.kneeL.rotation.x = 1.35;
+      this.kneeR.rotation.x = 1.35;
+      this.hips.position.y = 0.96 - bounce - attackPulse * 0.018;
+      this.hips.rotation.y = attackPulse * 0.06;
+    } else {
+      this.legL.rotation.set(-s * A * mb - attackPulse * 0.16, 0, 0);
+      this.legR.rotation.set(s * A * mb + attackPulse * 0.08, 0, 0);
+      this.kneeL.rotation.x = (Math.max(0, c) * (0.7 + run * 0.6) + 0.08) * mb;
+      this.kneeR.rotation.x = (Math.max(0, -c) * (0.7 + run * 0.6) + 0.08) * mb;
+      this.hips.position.y = 0.96 - Math.abs(c) * 0.035 * mb * (0.6 + run) + breath * 0.004 - attackPulse * 0.018;
+      this.hips.rotation.y = s * 0.1 * mb + attackPulse * 0.06;
+    }
 
     let spX = 0.05 + 0.14 * mb * run + breath * 0.012;
     let spY = -s * 0.16 * mb;

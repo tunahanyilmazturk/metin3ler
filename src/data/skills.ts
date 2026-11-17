@@ -46,6 +46,14 @@ const defs: SkillDef[] = [
     buff: { dur: 16, def: 0.6 }, desc: '16 sn boyunca savunmayı %60 artırır.' },
   { id: 'thunder', name: 'Yıldırım Fırtınası', type: 'targetAoe', icon: 'bolt', level: 10, mp: 40, cd: 15, mult: 3.6, radius: 6, stun: 1, color: 0xb0c8ff,
     desc: 'Hedef bölgeye gökten yıldırımlar yağdırır.' },
+
+  // Han yemekleri — sınıf yeteneği değildir, yalnızca güçlendirme adı/etkisi için kayıtlı.
+  { id: 'innstew', name: 'Köy Güveci', type: 'buff', icon: 'buff', level: 1, mp: 0, cd: 0, color: 0xd09850,
+    buff: { dur: 300, atk: 0.1, def: 0.15 }, desc: '5 dk boyunca saldırı +%10, savunma +%15.' },
+  { id: 'innroast', name: 'Odun Ateşi Kebabı', type: 'buff', icon: 'buff', level: 1, mp: 0, cd: 0, color: 0xe07840,
+    buff: { dur: 240, atk: 0.2 }, desc: '4 dk boyunca saldırı +%20.' },
+  { id: 'inntea', name: 'Dağ Otu Şerbeti', type: 'buff', icon: 'buff', level: 1, mp: 0, cd: 0, color: 0x70c8a0,
+    buff: { dur: 240, speed: 0.15, crit: 8 }, desc: '4 dk boyunca hız +%15, kritik +%8.' },
 ];
 
 export const SKILLS: Record<string, SkillDef> = Object.fromEntries(defs.map((d) => [d.id, d]));

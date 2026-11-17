@@ -5,7 +5,9 @@ import {
 } from '../data/items';
 import { QUESTS } from '../data/quests';
 import { SKILLS } from '../data/skills';
-import { NPCS } from '../data/world';
+import { NPCS, TRAVEL_SPOTS } from '../data/world';
+import { HORSES } from '../data/horses';
+import { EXCHANGES } from '../data/items';
 import { INVENTORY_COLS, INVENTORY_OPEN_PAGES, INVENTORY_PAGE_COUNT, INVENTORY_PAGE_SIZE, asStack, isLink, itemSize } from '../data/inventory';
 import type { DayNightMode } from '../data/settings';
 import type { Quality } from '../render/pipeline';
@@ -17,10 +19,11 @@ import { CharacterPreview } from './characterPreview';
 import type { Game } from '../game';
 import { icon } from './icons';
 
-export type WinName = 'inv' | 'char' | 'shop' | 'smith' | 'quest' | 'settings' | 'autohunt';
+export type WinName = 'inv' | 'char' | 'shop' | 'smith' | 'quest' | 'settings' | 'autohunt' | 'vault' | 'travel' | 'inn' | 'stable';
 
 const TITLES: Record<WinName, string> = {
   inv: 'Envanter', char: 'Karakter', shop: 'Tüccar Sevinç', smith: 'Demirci Bora', quest: 'Bilge Aksakal', settings: 'Ayarlar', autohunt: 'Oto Av',
+  vault: 'Kasadar Asude', travel: 'Rehber Davut', inn: 'Hancı Gülsüm', stable: 'Seyis Rahmi',
 };
 const STAT_NAMES: Record<StatKey, [string, string]> = {
   str: ['Güç', 'Savaşçının saldırı gücünü artırır'],
@@ -128,14 +131,17 @@ export class Windows {
 
   show(n: WinName, npcId?: string) {
     if (n === 'shop' && npcId) this.shopNpcId = npcId;
-    if (n === 'shop' || n === 'smith') { this.close('shop'); this.close('smith'); this.close('quest'); }
-    if (n === 'quest') { this.close('shop'); this.close('smith'); }
+    if (this.isNpcWin(n)) (['shop', 'smith', 'quest', 'vault', 'travel', 'inn', 'stable'] as WinName[]).forEach((w) => { if (w !== n) this.close(w); });
     this.open.add(n);
     this.syncInventoryMode();
-    if (n === 'shop' || n === 'smith') this.show('inv');
+    if (n === 'shop' || n === 'smith' || n === 'vault') this.show('inv');
     this.els[n].classList.remove('hidden');
     this.bringFront(this.els[n]);
     this.render(n);
+  }
+
+  private isNpcWin(n: WinName) {
+    return n === 'shop' || n === 'smith' || n === 'quest' || n === 'vault' || n === 'travel' || n === 'inn' || n === 'stable';
   }
 
   close(n: WinName) {
@@ -144,7 +150,7 @@ export class Windows {
     this.els[n].classList.add('hidden');
     if (n === 'smith') this.smithRef = null;
     this.tooltip.style.display = 'none';
-    if ((n === 'shop' || n === 'smith') && this.open.has('inv')) this.render('inv');
+    if ((n === 'shop' || n === 'smith' || n === 'vault') && this.open.has('inv')) this.render('inv');
   }
 
   toggle(n: WinName) {
@@ -163,7 +169,7 @@ export class Windows {
   refresh() { for (const n of this.open) this.render(n); }
 
   private syncInventoryMode() {
-    this.els.inv?.classList.toggle('with-service', this.open.has('shop') || this.open.has('smith'));
+    this.els.inv?.classList.toggle('with-service', this.open.has('shop') || this.open.has('smith') || this.open.has('vault'));
   }
 
   update() {
@@ -216,7 +222,7 @@ export class Windows {
     if (!p) return;
     switch (n) {
       case 'inv': {
-        const mode = this.open.has('shop') ? 'Sağ tık: sat' : this.open.has('smith') ? 'Sol tık: yükseltmek için seç' : 'Sağ tık / çift tık: kullan veya kuşan';
+        const mode = this.open.has('shop') ? 'Sağ tık: sat' : this.open.has('smith') ? 'Sol tık: yükseltmek için seç' : this.open.has('vault') ? 'Sağ tık: kasaya koy' : 'Sağ tık / çift tık: kullan veya kuşan';
         const pageStart = this.inventoryPage * INVENTORY_PAGE_SIZE;
         const equipmentSlot = (slot: EquipSlot) => `
           <div class="paperdoll-equip" title="${SLOT_NAMES[slot]}">
@@ -370,7 +376,9 @@ export class Windows {
           ? '“Keskin çelik, usta işi! Kılıç mı, hançer mi, asa mı, yoksa mızrak mı? En iyileri yalnızca bende.”'
           : this.shopNpcId === 'armorer'
             ? '“Sağlam zırh hayat kurtarır. Gel, sana uygun bir zırh seçelim.”'
-            : '“Hoş geldin yolcu! En iyi mallar bende. Çantandaki eşyaları sağ tıklayarak bana satabilirsin.”';
+            : this.shopNpcId === 'jeweler'
+              ? '“Parlayan her şey altın değildir ama bendekiler öyledir. Malzemelerini de Ruh Kristaline çevirebilirim.”'
+              : '“Hoş geldin yolcu! En iyi mallar bende. Çantandaki eşyaları sağ tıklayarak bana satabilirsin.”';
         const titleEl = this.els.shop.querySelector('h3');
         if (titleEl && npc) titleEl.textContent = npc.name;
         const CATS: [string, string][] = [['all', 'Tümü'], ['weapon', 'Silah'], ['armor', 'Zırh'], ['jewel', 'Takı'], ['consum', 'İksir/Diğer']];
@@ -393,6 +401,16 @@ export class Windows {
                   <span class="price ${p.gold < d.price ? 'no' : ''}">${d.price.toLocaleString('tr-TR')}</span>
                   <button data-buy="${id}">${d.stack ? 'Al <small>(⇧ x10)</small>' : 'Al'}</button></div>`;
               }).join('') || '<i class="shop-empty">Bu kategoride mal yok.</i>'}</div>
+              ${this.shopNpcId === 'jeweler' ? `
+                <div class="inventory-section-title"><span>Değişim</span><span>Malzeme → Ruh Kristali</span></div>
+                <div class="shop-list exchange-list">${EXCHANGES.map((ex, i) => {
+                  const gd = ITEMS[ex.give.id], rd = ITEMS[ex.get.id];
+                  const have = p.countItem(ex.give.id);
+                  const ok = have >= ex.give.count;
+                  return `<div class="row ${ok ? '' : 'dim'}">
+                    <div class="nm"><b>${gd.name} ×${ex.give.count}</b><small>elinde: ${have} → ${rd.name} ×${ex.get.count}</small></div>
+                    <button data-exchange="${i}" ${ok ? '' : 'disabled'}>Değiştir</button></div>`;
+                }).join('')}</div>` : ''}
             </section>
             <section class="shop-sell">
               <div class="inventory-section-title"><span>Satış</span><span>Çantandan sağ tıkla sat</span></div>
@@ -406,6 +424,100 @@ export class Windows {
               <div class="shop-gold">${icon('coin', '#f0c040')}<b>${p.gold.toLocaleString('tr-TR')}</b> Akçe</div>
             </section>
           </div>`;
+        break;
+      }
+      case 'vault': {
+        const v = g.vault;
+        const vaultCell = (i: number) => {
+          const c = v.cells[i];
+          if (c && isLink(c)) return '';
+          const s = asStack(c);
+          const size = s ? itemSize(s.id) : 1;
+          const col = (i % INVENTORY_COLS) + 1;
+          const row = Math.floor((i % INVENTORY_PAGE_SIZE) / INVENTORY_COLS) + 1;
+          const style = `grid-column:${col};grid-row:${row} / span ${size}`;
+          const extra = size > 1 ? `multi s${size}` : '';
+          return this.slot(s, `data-vault="${i}" style="${style}" aria-label="Kasa gözü ${i + 1}"`, extra);
+        };
+        const pageStart = this.inventoryPage * INVENTORY_PAGE_SIZE;
+        body.innerHTML = `<p class="npc-say">“Eşyaların burada güvende. Sağ tıkla kasaya koy, kasadan sağ tıkla geri al. Kasan kayıtlıdır — oyuna döndüğünde aynen durur.”</p>
+          <div class="shop-layout">
+            <section class="shop-stock">
+              <div class="inventory-section-title"><span>Kasa</span><span>${v.usedCount} / 60 göz</span></div>
+              <div class="vault-grids">
+                ${[0, 1].map((pg) => `<div class="inventory-grid shop-inv">${Array.from({ length: INVENTORY_PAGE_SIZE }, (_, i) => vaultCell(pg * INVENTORY_PAGE_SIZE + i)).join('')}</div>`).join('')}
+              </div>
+            </section>
+            <section class="shop-sell">
+              <div class="inventory-section-title"><span>Çantan</span><span>Sağ tık: kasaya koy</span></div>
+              <nav class="inventory-pages">${Array.from({ length: INVENTORY_OPEN_PAGES }, (_, page) =>
+                `<button class="inventory-page ${page === this.inventoryPage ? 'active' : ''}" data-inv-page="${page}" aria-label="Sayfa ${page + 1}"><b>${page + 1}</b></button>`).join('')}</nav>
+              <div class="inventory-grid shop-inv">${Array.from({ length: INVENTORY_PAGE_SIZE }, (_, i) => this.invCell(pageStart + i)).join('')}</div>
+              <div class="shop-gold">${icon('coin', '#f0c040')}<b>${p.gold.toLocaleString('tr-TR')}</b> Akçe</div>
+            </section>
+          </div>`;
+        break;
+      }
+      case 'travel': {
+        body.innerHTML = `<p class="npc-say">“Diyarın yollarını avucumun içi gibi bilirim. Nereye gitmek istersin? Küçük bir ücret karşılığı seni güvenle götürürüm.”</p>
+          <div class="travel-list">${TRAVEL_SPOTS.map((s, i) => `
+            <div class="travel-row">
+              <div class="nm"><b>${s.name}</b><small>${s.desc}</small></div>
+              <span class="price ${p.gold < s.cost ? 'no' : ''}">${s.cost.toLocaleString('tr-TR')}</span>
+              <button data-travel="${i}" ${p.gold < s.cost ? 'disabled' : ''}>Git</button>
+            </div>`).join('')}
+          </div>
+          <p class="dim-note">Köy merkezine dönmek ücretsizdir — ölürsen köyde dirilirsin.</p>`;
+        break;
+      }
+      case 'inn': {
+        const FOODS = [
+          { id: 'innstew', cost: 120 },
+          { id: 'innroast', cost: 220 },
+          { id: 'inntea', cost: 180 },
+        ];
+        const healCost = Math.round(10 + p.level * 4);
+        const activeFood = p.buffs.find((b) => FOODS.some((f) => f.id === b.id));
+        body.innerHTML = `<p class="npc-say">“Hoş geldin yorgun savaşçı! Biraz dinlen, karnını doyur — dışarısı tehlikeli.”</p>
+          <div class="inn-box">
+            <div class="travel-row">
+              <div class="nm"><b>Dinlen ve Yıkan</b><small>Canını ve mananı tamamen yeniler</small></div>
+              <span class="price ${p.gold < healCost ? 'no' : ''}">${healCost.toLocaleString('tr-TR')}</span>
+              <button data-inn-heal ${p.gold < healCost || (p.hp >= p.maxHp && p.mp >= p.maxMp) ? 'disabled' : ''}>Dinlen</button>
+            </div>
+          </div>
+          <h4>Han Yemekleri</h4>
+          <div class="travel-list">${FOODS.map((f) => {
+            const sk = SKILLS[f.id];
+            const active = p.buffs.find((b) => b.id === f.id);
+            return `<div class="travel-row ${active ? 'active' : ''}">
+              <div class="nm"><b>${sk.name}</b><small>${sk.desc}${active ? ` — etkin, ${active.t.toFixed(0)} sn` : ''}</small></div>
+              <span class="price ${p.gold < f.cost ? 'no' : ''}">${f.cost.toLocaleString('tr-TR')}</span>
+              <button data-inn-food="${f.id}" data-cost="${f.cost}" ${p.gold < f.cost ? 'disabled' : ''}>${active ? 'Yenile' : 'Ye'}</button>
+            </div>`;
+          }).join('')}</div>
+          ${activeFood ? `<p class="dim-note">Yeni bir yemek mevcut etkiyi yeniler; aynı anda bir han yemeği etkili olur.</p>` : ''}`;
+        break;
+      }
+      case 'stable': {
+        const cur = p.horseDef;
+        body.innerHTML = `<p class="npc-say">“Ahhırım diyarın en iyi taylarıyla dolu. Bir at seç; bineğin hem yoldaşın hem de gururun olur. <kbd>R</kbd> ile istediğin an binip inebilirsin.”</p>
+          ${cur ? `<div class="stable-status">
+            <div class="nm"><b>${cur.name}</b><small>Hız bonusu: +%${Math.round((cur.speed - 1) * 100)}${p.mounted ? ' · şu an sırtındasın' : ''}</small></div>
+            <button class="${p.mounted ? 'danger' : 'primary'}" data-mount>${p.mounted ? 'İn' : 'Bin'} <small>(R)</small></button>
+          </div>` : '<p class="dim-note">Henüz bir atın yok. Aşağıdan bir binek satın al.</p>'}
+          <h4>Satılık Binekler</h4>
+          <div class="travel-list">${Object.values(HORSES).map((h) => {
+            const owned = p.horseId === h.id;
+            return `<div class="travel-row ${owned ? 'active' : ''}">
+              <div class="nm"><b>${h.name}</b><small>${h.desc} — +%${Math.round((h.speed - 1) * 100)} hız</small></div>
+              ${owned
+                ? '<span class="price">Sahipsin</span><button disabled>—</button>'
+                : `<span class="price ${p.gold < h.cost ? 'no' : ''}">${h.cost.toLocaleString('tr-TR')}</span>
+                   <button data-horse-buy="${h.id}" ${p.gold < h.cost ? 'disabled' : ''}>${p.horseId ? 'Değiştir' : 'Satın Al'}</button>`}
+            </div>`;
+          }).join('')}</div>
+          <p class="dim-note">Atın ölümsüzdür ve her yere girer; savaşta üstünden atlamazsın. Yeni at alınca eskisi yerine geçer.</p>`;
         break;
       }
       case 'smith': {
@@ -472,6 +584,7 @@ export class Windows {
             <div><kbd>5</kbd> / <kbd>6</kbd> Can / mana iksiri</div><div><kbd>Z</kbd> Ganimeti topla</div>
             <div><kbd>H</kbd> Oto avı aç/kapat</div><div>Oto av çubuğundaki ⚙ gelişmiş ayarlar</div>
             <div><kbd>E</kbd> Konuş</div><div><kbd>Tab</kbd> Hedef değiştir</div>
+            <div><kbd>R</kbd> Ata bin / in</div>
             <div><kbd>Sol tık</kbd> Hedef seç / yürü</div><div><kbd>Sürükle</kbd> Kamerayı döndür</div>
             <div><kbd>Tekerlek</kbd> Yakınlaştır</div><div><kbd>I</kbd> <kbd>C</kbd> <kbd>J</kbd> Pencereler</div>
           </div>
@@ -546,10 +659,15 @@ export class Windows {
     return s.dataset.inv !== undefined ? { inv: Number(s.dataset.inv) } : { equip: s.dataset.equip as EquipSlot };
   }
 
+  private vaultOf(t: HTMLElement): number | null {
+    const s = t.closest('[data-vault]') as HTMLElement | null;
+    return s ? Number(s.dataset.vault) : null;
+  }
+
   private onDragStart(e: DragEvent) {
     const slot = (e.target as HTMLElement).closest('.slot') as HTMLElement | null;
     const ref = slot && this.refOf(slot);
-    if (this.open.has('shop') || this.open.has('smith')) { e.preventDefault(); return; }
+    if (this.open.has('shop') || this.open.has('smith') || this.open.has('vault')) { e.preventDefault(); return; }
     if (!ref || !e.dataTransfer) return;
     const item = this.game.economy.resolve(ref);
     if (!item) { e.preventDefault(); return; }
@@ -560,7 +678,7 @@ export class Windows {
 
   private onDragOver(e: DragEvent) {
     const slot = (e.target as HTMLElement).closest('.slot') as HTMLElement | null;
-    if (!slot || this.open.has('shop') || this.open.has('smith')) return;
+    if (!slot || this.open.has('shop') || this.open.has('smith') || this.open.has('vault')) return;
     if (e.dataTransfer?.types.includes('application/x-gokdemir-item')) {
       e.preventDefault();
       slot.classList.add('drop-hover');
@@ -570,7 +688,7 @@ export class Windows {
   private onDrop(e: DragEvent) {
     const target = (e.target as HTMLElement).closest('.slot') as HTMLElement | null;
     const raw = e.dataTransfer?.getData('application/x-gokdemir-item');
-    if (!target || !raw || this.open.has('shop') || this.open.has('smith')) return;
+    if (!target || !raw || this.open.has('shop') || this.open.has('smith') || this.open.has('vault')) return;
     let source: ItemRef;
     try {
       const value: unknown = JSON.parse(raw);
@@ -610,6 +728,52 @@ export class Windows {
       else if (d.charTab) { this.charTab = d.charTab as typeof this.charTab; g.audio.click(); this.render('char'); }
       else if (d.shopCat) { this.shopCat = d.shopCat; g.audio.click(); this.render('shop'); }
       else if (d.sellBulk) { g.economy.sellBulk(d.sellBulk as 'equip0' | 'materials'); }
+      else if (d.travel !== undefined) {
+        const spot = TRAVEL_SPOTS[Number(d.travel)];
+        if (spot && g.teleport(spot.x, spot.z, spot.cost)) {
+          g.events.emit('log', { msg: `Rehber seni ${spot.name} bölgesine götürdü.`, cls: 'good' });
+          this.close('travel');
+        }
+      }
+      else if (d.innHeal !== undefined) {
+        const cost = Math.round(10 + p.level * 4);
+        if (p.gold >= cost && (p.hp < p.maxHp || p.mp < p.maxMp)) {
+          p.gold -= cost;
+          p.hp = p.maxHp; p.mp = p.maxMp;
+          g.audio.pickup();
+          g.events.emit('log', { msg: 'Handa dinlendin; canın ve manan yenilendi.', cls: 'good' });
+          g.events.emit('changed');
+        }
+      }
+      else if (d.innFood) {
+        const cost = Number(d.cost);
+        const sk = SKILLS[d.innFood];
+        if (sk?.buff && p.gold >= cost) {
+          p.gold -= cost;
+          // Aynı anda tek han yemeği etkili olsun
+          for (const other of ['innstew', 'innroast', 'inntea']) p.buffs = p.buffs.filter((b) => b.id !== other);
+          p.addBuff(d.innFood, sk.buff, sk.color);
+          g.audio.pickup();
+          g.events.emit('log', { msg: `${sk.name} yedin — ${sk.desc}`, cls: 'good' });
+          g.events.emit('changed');
+        }
+      }
+      else if (d.exchange !== undefined) {
+        const ex = EXCHANGES[Number(d.exchange)];
+        if (ex) g.economy.exchange(ex.give, ex.get);
+      }
+      else if (d.horseBuy) {
+        const h = HORSES[d.horseBuy];
+        if (h && p.gold >= h.cost && p.horseId !== h.id) {
+          p.gold -= h.cost;
+          p.horseId = h.id;
+          if (p.mounted) p.dismount(true);
+          g.audio.coin();
+          g.events.emit('log', { msg: `${h.name} senin oldu! R ile binip inebilirsin.`, cls: 'gold' });
+          g.events.emit('changed');
+        }
+      }
+      else if (d.mount !== undefined) { p.toggleMount(); this.render('stable'); }
       else if (d.stat) { p.addStat(d.stat as StatKey); g.audio.click(); }
       else if (d.buy) g.economy.buy(d.buy, e.shiftKey ? 10 : 1);
       else if (d.upgrade !== undefined && this.smithRef) {
@@ -642,7 +806,11 @@ export class Windows {
       this.render('smith');
     } else if (ref && matchMedia('(any-pointer: coarse)').matches) {
       if (this.open.has('shop') && 'inv' in ref) g.economy.sell(ref.inv);
-      else if (!this.open.has('shop')) { if ('inv' in ref) p.useSlot(ref.inv); else p.unequip(ref.equip); }
+      else if (this.open.has('vault') && 'inv' in ref) g.vault.deposit(ref.inv);
+      else if (!this.open.has('shop') && !this.open.has('vault')) { if ('inv' in ref) p.useSlot(ref.inv); else p.unequip(ref.equip); }
+    } else if (matchMedia('(any-pointer: coarse)').matches) {
+      const vi = this.vaultOf(t);
+      if (vi !== null && this.open.has('vault')) g.vault.withdraw(vi);
     }
   }
 
@@ -664,14 +832,22 @@ export class Windows {
     this.render('autohunt');
   }
 
-  /** Sağ tık / çift tık: kullan, kuşan, çıkar ya da sat. */
+  /** Sağ tık / çift tık: kullan, kuşan, çıkar, sat ya da kasaya aktar. */
   private onUse(e: MouseEvent) {
-    const ref = this.refOf(e.target as HTMLElement);
-    if (!ref) return;
+    const t = e.target as HTMLElement;
     const g = this.game;
+    const vi = this.vaultOf(t);
+    if (vi !== null && this.open.has('vault')) {
+      g.vault.withdraw(vi);
+      this.tooltip.style.display = 'none';
+      return;
+    }
+    const ref = this.refOf(t);
+    if (!ref) return;
     this.smithRef = null;
     if ('equip' in ref) g.player.unequip(ref.equip);
     else if (this.open.has('shop')) g.economy.sell(ref.inv);
+    else if (this.open.has('vault')) g.vault.deposit(ref.inv);
     else g.player.useSlot(ref.inv);
     this.tooltip.style.display = 'none';
   }
@@ -684,7 +860,10 @@ export class Windows {
     let hint = '';
     if (t.dataset.inv !== undefined) {
       s = p.stackAt(Number(t.dataset.inv));
-      if (s) hint = this.open.has('shop') ? `Sağ tık: sat (${this.game.economy.sellPrice(Number(t.dataset.inv)).toLocaleString('tr-TR')} Akçe)` : isEquip(ITEMS[s.id]) ? 'Sağ tık: kuşan' : ITEMS[s.id].type === 'potion' ? 'Sağ tık: kullan' : '';
+      if (s) hint = this.open.has('shop') ? `Sağ tık: sat (${this.game.economy.sellPrice(Number(t.dataset.inv)).toLocaleString('tr-TR')} Akçe)` : this.open.has('vault') ? 'Sağ tık: kasaya koy' : isEquip(ITEMS[s.id]) ? 'Sağ tık: kuşan' : ITEMS[s.id].type === 'potion' ? 'Sağ tık: kullan' : '';
+    } else if (t.dataset.vault !== undefined) {
+      s = this.game.vault.stackAt(Number(t.dataset.vault));
+      hint = 'Sağ tık: çantaya al';
     } else if (t.dataset.equip) {
       s = p.equip[t.dataset.equip as EquipSlot];
       hint = 'Sağ tık: çıkar';
