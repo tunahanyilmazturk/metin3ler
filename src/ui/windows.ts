@@ -263,7 +263,7 @@ export class Windows {
           </div>
           <footer class="inventory-footer">
             <span class="gold">${icon('coin', '#f0c040')}${p.gold.toLocaleString('tr-TR')} Akçe</span>
-            <small>${mode} · Sürükle-bırak ile taşı</small>
+            <small>${mode} · Eşyayı çubuğa da sürükleyebilirsin</small>
           </footer>`;
         body.querySelector<HTMLElement>('[data-inventory-name]')!.textContent = p.name;
         this.characterPreview ??= new CharacterPreview();
@@ -309,7 +309,7 @@ export class Windows {
               sk.slow ? `Yavaşlatma ${sk.slow} sn` : '',
               sk.buff ? `Süre ${sk.buff.dur} sn` : '',
             ].filter(Boolean).join(' · ');
-            return `<div class="sk ${locked ? 'locked' : ''} ${active ? 'active' : ''}"><i>${icon(sk.icon)}</i><div>
+            return `<div class="sk ${locked ? 'locked' : ''} ${active ? 'active' : ''}" draggable="true" data-skill-idx="${i}" title="Kısayol çubuğuna sürükle"><i>${icon(sk.icon)}</i><div>
               <b>[${i + 1}] ${sk.name}</b><em class="sk-type">${SKILL_TYPES[sk.type] ?? sk.type}</em>
               <small>${locked ? `Seviye ${sk.level}'de açılır · ` : ''}${sk.mp} mana · ${sk.cd} sn bekleme</small>
               ${extras ? `<small class="sk-fx">${extras}</small>` : ''}
@@ -592,8 +592,8 @@ export class Windows {
           <h4>Kontroller</h4>
           <div class="keys">
             <div><kbd>W A S D</kbd> Hareket</div><div><kbd>Shift</kbd> Koş</div>
-            <div><kbd>Boşluk</kbd> Saldır</div><div><kbd>1–4</kbd> Yetenekler</div>
-            <div><kbd>5</kbd> / <kbd>6</kbd> Can / mana iksiri</div><div><kbd>Z</kbd> Ganimeti topla</div>
+            <div><kbd>Boşluk</kbd> Saldır</div><div><kbd>1–4</kbd> Alt kısayol sırası</div>
+            <div><kbd>F1–F4</kbd> Üst kısayol sırası</div><div><kbd>Z</kbd> Ganimeti topla</div>
             <div><kbd>H</kbd> Oto avı aç/kapat</div><div>Oto av çubuğundaki ⚙ gelişmiş ayarlar</div>
             <div><kbd>E</kbd> Konuş</div><div><kbd>Tab</kbd> Hedef değiştir</div>
             <div><kbd>R</kbd> Ata bin / in</div>
@@ -679,7 +679,17 @@ export class Windows {
   }
 
   private onDragStart(e: DragEvent) {
-    const slot = (e.target as HTMLElement).closest('.slot') as HTMLElement | null;
+    const t = e.target as HTMLElement;
+    // Karakter penceresindeki yetenek satırları kısayol çubuğuna sürüklenebilir.
+    const sk = t.closest('[data-skill-idx]') as HTMLElement | null;
+    if (sk) {
+      if (!e.dataTransfer) return;
+      e.dataTransfer.setData('application/x-gokdemir-skill', sk.dataset.skillIdx!);
+      e.dataTransfer.effectAllowed = 'copy';
+      sk.classList.add('dragging');
+      return;
+    }
+    const slot = t.closest('.slot') as HTMLElement | null;
     const ref = slot && this.refOf(slot);
     if (this.open.has('shop') || this.open.has('smith') || this.open.has('vault')) { e.preventDefault(); return; }
     if (!ref || !e.dataTransfer) return;

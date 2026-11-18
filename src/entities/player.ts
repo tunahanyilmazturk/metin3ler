@@ -33,7 +33,12 @@ export interface PlayerSave {
   x: number;
   z: number;
   horse?: string | null;
+  hotbar?: (HotbarEntry | null)[];
 }
+
+/** Kısayol çubuğu gözü: yetenek sırası ya da envanter eşyası referansı. */
+export type HotbarEntry = { t: 'skill'; i: number } | { t: 'item'; id: string; plus: number };
+export const HOTBAR_SLOTS = 8;
 
 type Intent = { kind: 'attack'; enemy: Enemy } | { kind: 'npc'; npc: Npc } | { kind: 'move'; x: number; z: number } | null;
 export type ItemLocation = { inv: number } | { equip: EquipSlot };
@@ -67,6 +72,8 @@ export class Player {
   private mountCd = 0;
   cooldowns = [0, 0, 0, 0];
   buffs: Buff[] = [];
+  /** 1–4 ve F1–F4 tuşlarına bağlı kısayol çubuğu (ilk 4 göz 1–4, son 4 göz F1–F4). */
+  hotbar: (HotbarEntry | null)[] = new Array(HOTBAR_SLOTS).fill(null);
   readonly radius = 0.45;
 
   // Türetilmiş değerler
@@ -95,8 +102,11 @@ export class Player {
       this.inv = new Array(INV_SIZE).fill(null);
       save.inv.slice(0, INV_SIZE).forEach((item, i) => { if (item) this.restoreStack(i, item); });
       this.equip = { ...this.equip, ...save.equip };
+      if (save.hotbar) save.hotbar.slice(0, HOTBAR_SLOTS).forEach((e, i) => { this.hotbar[i] = e; });
+      else this.defaultHotbar();
       this.pos.set(save.x, 0, save.z);
     } else {
+      this.defaultHotbar();
       this.pos.set(PLAYER_SPAWN.x, 0, PLAYER_SPAWN.z);
       for (const id of this.cls.startItems) {
         const d = ITEMS[id];
@@ -112,13 +122,20 @@ export class Player {
     this.refreshModel();
   }
 
+  /** Başlangıç çubuğu: 1–4 yetenekler, F1–F2 iksirler. */
+  private defaultHotbar() {
+    for (let i = 0; i < 4; i++) this.hotbar[i] = { t: 'skill', i };
+    this.hotbar[4] = { t: 'item', id: 'hp1', plus: 0 };
+    this.hotbar[5] = { t: 'item', id: 'mp1', plus: 0 };
+  }
+
   serialize(): PlayerSave {
     return {
       name: this.name, cls: this.cls.id, level: this.level, exp: this.exp, statPoints: this.statPoints,
       stats: this.stats, gold: this.gold, hp: this.hp, mp: this.mp,
       inv: this.inv.map((c) => (c && isLink(c) ? null : c)) as (ItemStack | null)[], equip: this.equip,
       x: this.alive ? this.pos.x : PLAYER_SPAWN.x, z: this.alive ? this.pos.z : PLAYER_SPAWN.z,
-      horse: this.horseId,
+      horse: this.horseId, hotbar: this.hotbar,
     };
   }
 
@@ -354,9 +371,10 @@ export class Player {
       if (this.comboTimer <= 0) this.attackIdx = 0;
     }
 
-    for (let i = 0; i < 4; i++) if (inp.hit(`Digit${i + 1}`)) this.useSkill(i);
-    if (inp.hit('Digit5')) this.usePotion('hp');
-    if (inp.hit('Digit6')) this.usePotion('mp');
+    for (let i = 0; i < 4; i++) {
+      if (inp.hit(`Digit${i + 1}`)) this.useHotbar(i);
+      if (inp.hit(`F${i + 1}`)) this.useHotbar(4 + i);
+    }
     if (inp.hit('KeyR')) this.toggleMount();
 
     this.pos.y = g.terrain.getHeight(this.pos.x, this.pos.z);
@@ -829,6 +847,38 @@ export class Player {
     this.buffs.push({ id, t: def.dur, def, color });
     this.recalc();
     this.game.events.emit('changed');
+  }
+
+  /** Kısayol çubuğu gözünü tetikler: yetenek kullanır ya da eşyayı envanterden bulup kullanır/kuşanır. */
+  useHotbar(i: number) {
+    const e = this.hotbar[i];
+    if (!e) return;
+    if (e.t === 'skill') { this.useSkill(e.i); return; }
+    const idx = this.findHotbarItem(e);
+    if (idx < 0) {
+      this.game.events.emit('log', { msg: `${ITEMS[e.id]?.name ?? 'Eşya'} envanterde kalmadı.`, cls: 'warn' });
+      return;
+    }
+    this.useSlot(idx);
+  }
+
+  /** Çubuktaki eşyanın envanterdeki çapa indeksini bulur; iksirler aynı türden başka bir iksire düşer. */
+  private findHotbarItem(e: { id: string; plus: number }): number {
+    for (let i = 0; i < INVENTORY_OPEN_SLOTS; i++) {
+      if (anchorOf(this.inv, i) !== i) continue;
+      const s = asStack(this.inv[i]);
+      if (s && s.id === e.id && s.plus === e.plus) return i;
+    }
+    const d = ITEMS[e.id];
+    if (d?.type === 'potion') {
+      for (let i = 0; i < INVENTORY_OPEN_SLOTS; i++) {
+        if (anchorOf(this.inv, i) !== i) continue;
+        const s = asStack(this.inv[i]);
+        const sd = s && ITEMS[s.id];
+        if (s && sd?.type === 'potion' && !!sd.heal === !!d.heal) return i;
+      }
+    }
+    return -1;
   }
 
   usePotion(kind: 'hp' | 'mp') {

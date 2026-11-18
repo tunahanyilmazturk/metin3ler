@@ -7,7 +7,8 @@ import { HORSES } from '../data/horses';
 import { INVENTORY_TOTAL_SLOTS } from '../data/inventory';
 import { DAY_NIGHT_MODES } from '../data/settings';
 import type { DayNightMode } from '../data/settings';
-import type { PlayerSave } from '../entities/player';
+import type { HotbarEntry, PlayerSave } from '../entities/player';
+import { HOTBAR_SLOTS } from '../entities/player';
 import type { QuestSave } from './quests';
 import type { Quality } from '../render/pipeline';
 
@@ -44,6 +45,17 @@ function isItemStack(value: unknown): value is ItemStack {
   return item.stack === true || value.count === 1;
 }
 
+function isHotbarEntry(value: unknown): value is HotbarEntry {
+  if (value === null) return true;
+  if (!isRecord(value)) return false;
+  if (value.t === 'skill') return Number.isInteger(value.i) && (value.i as number) >= 0 && (value.i as number) < 4;
+  if (value.t === 'item') {
+    return typeof value.id === 'string' && Object.hasOwn(ITEMS, value.id) &&
+      Number.isInteger(value.plus) && (value.plus as number) >= 0 && (value.plus as number) <= MAX_PLUS;
+  }
+  return false;
+}
+
 function isPlayerSave(value: unknown): value is PlayerSave {
   if (!isRecord(value)) return false;
   if (typeof value.name !== 'string' || value.name.length > 16) return false;
@@ -57,6 +69,8 @@ function isPlayerSave(value: unknown): value is PlayerSave {
   if (!isRecord(stats) || !STAT_KEYS.every((key) => Number.isInteger(stats[key]) && (stats[key] as number) >= 0)) return false;
   if (value.horse !== undefined && value.horse !== null && (typeof value.horse !== 'string' || !Object.hasOwn(HORSES, value.horse))) return false;
   if (!Array.isArray(value.inv) || value.inv.length > INVENTORY_TOTAL_SLOTS || !value.inv.every((item) => item === null || isItemStack(item))) return false;
+  const hotbar = value.hotbar;
+  if (hotbar !== undefined && (!Array.isArray(hotbar) || hotbar.length > HOTBAR_SLOTS || !hotbar.every(isHotbarEntry))) return false;
   const equip = value.equip;
   if (!isRecord(equip)) return false;
   return EQUIP_SLOTS.every((slot) => {

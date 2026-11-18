@@ -1,6 +1,9 @@
 import { clamp } from '../core/utils';
 import { CLASSES, ClassId } from '../data/classes';
+import { ITEMS, RARITY_COLORS } from '../data/items';
+import { anchorOf, asStack } from '../data/inventory';
 import { SKILLS } from '../data/skills';
+import type { HotbarEntry } from '../entities/player';
 import type { Npc } from '../entities/npc';
 import { SaveSystem } from '../systems/save';
 import type { Game } from '../game';
@@ -33,14 +36,14 @@ export class UI {
   private minimap!: Minimap;
   private worldmap!: WorldMap;
   private el: Record<string, HTMLElement> = {};
-  private skillEls: { root: HTMLElement; cd: HTMLElement; cdText: HTMLElement }[] = [];
+  private hbEls: { root: HTMLElement; ic: HTMLElement; cd: HTMLElement; cdt: HTMLElement; cnt: HTMLElement }[] = [];
   private hurt = 0;
   private slow = 0;
   private tutorialStep = 0;
   private readonly tutorialSteps = [
     { title: 'Diyarı keşfet', text: 'WASD ile yürü, Shift ile hızlan. Zemine tıklayarak da gideceğin yeri seçebilirsin. Dokunmatik ekranda sol çubuğu kullan.' },
     { title: 'Hedef al ve savaş', text: 'Bir düşmana tıklayarak hedef seç; Tab ile yakındaki hedefler arasında geçiş yap. Boşluk ile saldır veya dokunmatik ekrandaki Saldır düğmesine bas.' },
-    { title: 'Yeteneklerini kullan', text: '1–4 tuşları ya da kısayol çubuğu yeteneklerini kullanır. 5 ve 6 can ve mana iksiridir. Yetenekler mana harcar ve bekleme süresine sahiptir.' },
+    { title: 'Yeteneklerini kullan', text: '1–4 tuşları alt sırayı, F1–F4 üst sırayı kullanır. Eşya ve yetenekleri çubuğa sürükleyip dizebilir, sağ tıkla çıkarabilirsin. Yetenekler mana harcar ve bekleme süresine sahiptir.' },
     { title: 'İlk görevini al', text: 'Köyde Bilge Aksakal’a yaklaş ve E’ye bas. Görevi kabul et; hedefin ekranın sol üstündeki takip alanında görünür. Oradaki Rota düğmesi seni hedefe yürütür, İz düğmesi yere iz işaretleri koyar. İlerlemen tarayıcına kaydedilir.' },
   ];
 
@@ -88,6 +91,7 @@ export class UI {
           <div class="hotbar" id="hotbar"></div>
           <div class="expbar"><i id="p-exp"></i><span id="p-exp-t"></span></div>
         </div>
+        <div class="hotbar hb-float" id="hotbar2"></div>
         <div class="touch-controls" aria-label="Dokunmatik kontroller">
           <div class="touch-stick" aria-label="Hareket" role="application"><span class="touch-knob"></span></div>
           <button class="touch-attack" type="button" aria-label="Saldır">${icon('sword')}<span>Saldır</span></button>
@@ -169,7 +173,30 @@ export class UI {
       const m = b?.dataset.questRoute;
       if (game.started && (m === 'walk' || m === 'trail' || m === 'auto')) game.questNav.toggle(m);
     });
-    $('#hotbar').addEventListener('click', (e) => {
+    this.bindBar($('#hotbar'));
+    this.bindBar($('#hotbar2'));
+    this.bindTouch();
+    // Yüzen F çubuğunun kayıtlı konumu/döşeni (varsa) geri yüklenir.
+    try {
+      const raw = localStorage.getItem('gokdemir-bar2-v1');
+      if (raw) {
+        const s = JSON.parse(raw) as { x?: number; y?: number; vert?: boolean };
+        const f = $('#hotbar2');
+        if (Number.isFinite(s.x) && Number.isFinite(s.y)) {
+          f.style.left = `${clamp(s.x!, 0, innerWidth - 40)}px`;
+          f.style.top = `${clamp(s.y!, 0, innerHeight - 40)}px`;
+          f.style.bottom = 'auto';
+          f.style.transform = 'none';
+        }
+        if (s.vert) f.classList.add('vert');
+      }
+    } catch { /* yoksay */ }
+  }
+
+  /** Kısayol çubuğu kabı için tık, sağ-tık temizleme ve sürükle-bırak bağlar. */
+  private bindBar(hb: HTMLElement) {
+    const game = this.game;
+    hb.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('[data-auto-settings]')) {
         this.windows.toggle('autohunt');
@@ -179,12 +206,77 @@ export class UI {
         game.autoHunt.toggle(game.player);
         return;
       }
-      const s = target.closest('[data-skill],[data-pot]') as HTMLElement | null;
-      if (!s || !game.started) return;
-      if (s.dataset.skill) game.player.useSkill(Number(s.dataset.skill));
-      else game.player.usePotion(s.dataset.pot as 'hp' | 'mp');
+      const s = target.closest('[data-hb]') as HTMLElement | null;
+      if (s && game.started) game.player.useHotbar(Number(s.dataset.hb));
     });
+    // Sağ tık: gözü boşalt.
+    hb.addEventListener('contextmenu', (e) => {
+      const s = (e.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
+      if (!s) return;
+      e.preventDefault();
+      if (game.player.hotbar[Number(s.dataset.hb)]) {
+        game.player.hotbar[Number(s.dataset.hb)] = null;
+        game.events.emit('changed');
+      }
+    });
+    // Sürükle-bırak: envanter eşyaları, karakter penceresindeki yetenekler ve çubuk içi taşıma.
+    const HB_ACCEPT = ['application/x-gokdemir-item', 'application/x-gokdemir-skill', 'application/x-gokdemir-hb'];
+    hb.addEventListener('dragstart', (e) => {
+      const de = e as DragEvent;
+      const s = (de.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
+      if (!s || !de.dataTransfer || !game.player.hotbar[Number(s.dataset.hb)]) { de.preventDefault(); return; }
+      de.dataTransfer.setData('application/x-gokdemir-hb', s.dataset.hb!);
+      de.dataTransfer.effectAllowed = 'move';
+      s.classList.add('dragging');
+    });
+    hb.addEventListener('dragover', (e) => {
+      const s = (e.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
+      if (!s || !HB_ACCEPT.some((t) => e.dataTransfer?.types.includes(t))) return;
+      e.preventDefault();
+      s.classList.add('drop-hover');
+    });
+    hb.addEventListener('dragleave', (e) => {
+      (e.target as HTMLElement).closest('[data-hb]')?.classList.remove('drop-hover');
+    });
+    hb.addEventListener('dragend', () => hb.querySelectorAll('.dragging,.drop-hover').forEach((el) => el.classList.remove('dragging', 'drop-hover')));
+    hb.addEventListener('drop', (e) => {
+      const s = (e.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
+      if (!s || !e.dataTransfer) return;
+      e.preventDefault();
+      s.classList.remove('drop-hover');
+      const p = game.player;
+      const i = Number(s.dataset.hb);
+      const fromBar = e.dataTransfer.getData('application/x-gokdemir-hb');
+      if (fromBar !== '') {
+        const j = Number(fromBar);
+        [p.hotbar[i], p.hotbar[j]] = [p.hotbar[j], p.hotbar[i]];
+      } else {
+        let entry: HotbarEntry | null = null;
+        try {
+          const rawSkill = e.dataTransfer.getData('application/x-gokdemir-skill');
+          const rawItem = e.dataTransfer.getData('application/x-gokdemir-item');
+          if (rawSkill) {
+            const n = Number(JSON.parse(rawSkill));
+            if (Number.isInteger(n) && n >= 0 && n < p.skills.length) entry = { t: 'skill', i: n };
+          } else if (rawItem) {
+            const ref = JSON.parse(rawItem) as { inv?: number };
+            if (Number.isInteger(ref.inv) && (ref.inv as number) >= 0 && (ref.inv as number) < p.inv.length) {
+              const stack = asStack(p.inv[anchorOf(p.inv, ref.inv!)]);
+              if (stack) entry = { t: 'item', id: stack.id, plus: stack.plus };
+            }
+          }
+        } catch { return; }
+        if (!entry) return;
+        p.hotbar[i] = entry;
+      }
+      game.audio.click();
+      game.events.emit('changed');
+    });
+  }
 
+  /** Dokunmatik sanal çubuk, saldırı düğmesi ve mini harita etkileşimleri. */
+  private bindTouch() {
+    const game = this.game;
     const stick = $('.touch-stick', this.hud);
     const knob = $('.touch-knob', stick);
     let stickPointer: number | null = null;
@@ -266,7 +358,7 @@ export class UI {
             <button class="primary" id="btn-new">Yeni Maceraya Başla</button>
             ${save ? '<button id="btn-continue"></button>' : ''}
           </div>
-          <p class="start-note">WASD ile yürü, Boşluk ile saldır, 1–4 ile yetenek kullan. İlerlemen tarayıcına kaydedilir.</p>
+          <p class="start-note">WASD ile yürü, Boşluk ile saldır, 1–4 ve F1–F4 ile kısayol çubuğunu kullan. İlerlemen tarayıcına kaydedilir.</p>
         </div>
       </div>`;
     $<HTMLInputElement>('#char-name', this.start).value = save?.player.name ?? '';
@@ -301,14 +393,11 @@ export class UI {
     this.minimap = new Minimap(this.game, $<HTMLCanvasElement>('#minimap'));
     this.worldmap = new WorldMap(this.game, $<HTMLCanvasElement>('#wmap'), this.minimap);
     setText(this.el['p-name'], `${p.name} · ${p.cls.name}`);
-    // Kısayol çubuğu: 4 yetenek, 2 iksir ve oto av kontrolleri
-    const hb = $('#hotbar');
-    hb.innerHTML = p.skills.map((sk, i) => `
-      <div class="hb" data-skill="${i}" title="${sk.name} — ${sk.desc} (${sk.mp} mana, ${sk.cd} sn)">
-        ${icon(sk.icon)}<kbd>${i + 1}</kbd><div class="cd"></div><span class="cdt"></span></div>`).join('') + `
-      <div class="hb-sep"></div>
-      <div class="hb pot" data-pot="hp" title="Can iksiri">${icon('potion', '#ff5a4a')}<kbd>5</kbd><em id="pot-hp"></em></div>
-      <div class="hb pot" data-pot="mp" title="Mana iksiri">${icon('potion', '#4a9cff')}<kbd>6</kbd><em id="pot-mp"></em></div>
+    // Kısayol çubukları: sabit merkez bar (1–4 + oto av) ve yüzen bar (F1–F4).
+    const hbSlot = (i: number, key: string) =>
+      `<div class="hb hb-slot" data-hb="${i}" draggable="false"><i class="hb-ic"></i><kbd>${key}</kbd><em class="hb-c"></em><div class="cd"></div><span class="cdt"></span></div>`;
+    $('#hotbar').innerHTML = `
+      ${[0, 1, 2, 3].map((i) => hbSlot(i, `${i + 1}`)).join('')}
       <div class="hb-sep"></div>
       <div class="auto-hunt-wrap">
         <button class="hb auto-hunt" data-auto-toggle aria-label="Oto avı aç veya kapat" aria-pressed="false" title="Oto avı aç/kapat (H)">
@@ -316,13 +405,98 @@ export class UI {
         </button>
         <button class="auto-hunt-config" data-auto-settings title="Oto av ayarları" aria-label="Oto av ayarları">⚙</button>
       </div>`;
-    this.skillEls = [...hb.querySelectorAll<HTMLElement>('[data-skill]')].map((root) => ({
-      root, cd: $('.cd', root), cdText: $('.cdt', root),
-    }));
-    this.el['pot-hp'] = $('#pot-hp');
-    this.el['pot-mp'] = $('#pot-mp');
+    const fbar = $('#hotbar2');
+    fbar.innerHTML = `
+      <div class="hb-grip" title="Sürükle: çubuğu taşı" aria-label="Çubuğu taşı">⋮</div>
+      ${[0, 1, 2, 3].map((i) => hbSlot(4 + i, `F${i + 1}`)).join('')}
+      <button class="hb-rot" type="button" title="Dikey / yatay çevir" aria-label="Çubuğu döndür">⟳</button>`;
+    this.hbEls = [];
+    this.hud.querySelectorAll<HTMLElement>('[data-hb]').forEach((root) => {
+      this.hbEls[Number(root.dataset.hb)] = {
+        root, ic: $('.hb-ic', root), cd: $('.cd', root), cdt: $('.cdt', root), cnt: $('.hb-c', root),
+      };
+    });
+
+    // Yüzen çubuğu tutamaçtan taşı; konum ve yön localStorage'da saklanır.
+    const grip = $('.hb-grip', fbar);
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const r = fbar.getBoundingClientRect();
+      fbar.style.left = `${r.left}px`;
+      fbar.style.top = `${r.top}px`;
+      fbar.style.bottom = 'auto';
+      fbar.style.transform = 'none';
+      const sx = e.clientX, sy = e.clientY, ox = r.left, oy = r.top;
+      grip.setPointerCapture(e.pointerId);
+      const move = (ev: PointerEvent) => {
+        fbar.style.left = `${clamp(ox + ev.clientX - sx, 0, innerWidth - 40)}px`;
+        fbar.style.top = `${clamp(oy + ev.clientY - sy, 0, innerHeight - 40)}px`;
+      };
+      const up = () => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        this.saveBar2();
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+    });
+    $('.hb-rot', fbar).addEventListener('click', () => {
+      fbar.classList.toggle('vert');
+      this.saveBar2();
+    });
+
     this.syncAutoHuntButton();
     this.showTutorial();
+  }
+
+  /** Yüzen F çubuğunun konumunu ve dikey/yatay durumunu kaydeder. */
+  private saveBar2() {
+    try {
+      const f = $('#hotbar2');
+      const r = f.getBoundingClientRect();
+      localStorage.setItem('gokdemir-bar2-v1', JSON.stringify({
+        x: Math.round(r.left), y: Math.round(r.top), vert: f.classList.contains('vert'),
+      }));
+    } catch { /* yoksay */ }
+  }
+
+  /** Göz içeriğini yalnızca giriş değiştiğinde yeniden çizer. */
+  private syncHotbarSlot(i: number) {
+    const p = this.game.player;
+    const els = this.hbEls[i];
+    const e = p.hotbar[i];
+    const key = e ? JSON.stringify(e) : '';
+    if ((els.root as any)._k !== key) {
+      (els.root as any)._k = key;
+      els.root.classList.toggle('empty', !e);
+      els.root.draggable = !!e;
+      if (!e) {
+        els.ic.innerHTML = '';
+        els.root.title = 'Boş göz — envanterden eşya ya da yetenek sekmesinden yetenek sürükle';
+      } else if (e.t === 'skill') {
+        const sk = p.skills[e.i];
+        els.ic.innerHTML = icon(sk.icon);
+        els.root.title = `${sk.name} — ${sk.desc} (${sk.mp} mana, ${sk.cd} sn) · Sağ tık: çıkar`;
+      } else {
+        const d = ITEMS[e.id];
+        const color = d.icon === 'potion' ? '#ff5a4a' : d.icon === 'potionmp' ? '#4a9cff' : RARITY_COLORS[d.rarity];
+        els.ic.innerHTML = `${icon(d.icon, color)}${e.plus > 0 ? `<b class="hb-plus">+${e.plus}</b>` : ''}`;
+        els.root.title = `${d.name} · Sağ tık: çıkar`;
+      }
+    }
+    // Eşya gözü: envanterdeki toplam adet
+    if (e?.t === 'item') {
+      let n = 0;
+      for (let c = 0; c < p.inv.length; c++) {
+        const s = asStack(p.inv[c]);
+        if (s && s.id === e.id && s.plus === e.plus) n += s.count;
+      }
+      setText(els.cnt, n > 0 ? String(n) : '');
+      els.root.classList.toggle('missing', n === 0);
+    } else {
+      setText(els.cnt, '');
+      els.root.classList.remove('missing');
+    }
   }
 
   private showTutorial() {
@@ -418,15 +592,19 @@ export class UI {
       setText(this.el['t-hp-t'], `${Math.ceil(t.hp).toLocaleString('tr-TR')} / ${t.maxHp.toLocaleString('tr-TR')}`);
     }
 
-    p.skills.forEach((sk, i) => {
-      const s = this.skillEls[i];
-      const cd = p.cooldowns[i];
-      s.root.classList.toggle('locked', p.level < sk.level);
-      s.root.classList.toggle('nomp', p.mp < sk.mp);
-      const h = `${((cd / sk.cd) * 100).toFixed(0)}%`;
+    for (let i = 0; i < this.hbEls.length; i++) {
+      this.syncHotbarSlot(i);
+      const s = this.hbEls[i];
+      const e = p.hotbar[i];
+      const si = e?.t === 'skill' ? e.i : -1;
+      const sk = si >= 0 ? p.skills[si] : null;
+      s.root.classList.toggle('locked', !!sk && p.level < sk.level);
+      s.root.classList.toggle('nomp', !!sk && p.mp < sk.mp);
+      const cd = sk ? p.cooldowns[si] : 0;
+      const h = sk ? `${((cd / sk.cd) * 100).toFixed(0)}%` : '0%';
       if ((s.cd as any)._h !== h) { (s.cd as any)._h = h; s.cd.style.height = h; }
-      setText(s.cdText, p.level < sk.level ? `Sv.${sk.level}` : cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : '');
-    });
+      setText(s.cdt, sk ? (p.level < sk.level ? `Sv.${sk.level}` : cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : '') : '');
+    }
 
     // Vinyet fades by intensity only; its shape stays fixed so it never looks like a shrinking box.
     this.hurt = Math.max(0, this.hurt - dt * 2.5);
@@ -441,8 +619,6 @@ export class UI {
     this.slow -= dt;
     if (this.slow <= 0) {
       this.slow = 0.25;
-      setText(this.el['pot-hp'], String(p.potionCount('hp')));
-      setText(this.el['pot-mp'], String(p.potionCount('mp')));
       setText(this.el['mm-clock'], `${g.env.day > 0.5 ? '☀' : '☾'} ${g.env.clock}`);
       setText(this.el['mm-pos'], `${Math.round(p.pos.x)}, ${Math.round(p.pos.z)}`);
       setText(this.el.fps, `${Math.round(g.fps)} FPS`);
