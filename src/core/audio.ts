@@ -3,6 +3,8 @@ export class AudioSystem {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   muted = false;
+  /** Ana ses seviyesi 0–1 (sessize alma ayrıca uygulanır). */
+  volume = 0.8;
 
   /** Tarayıcı kısıtı nedeniyle ilk kullanıcı etkileşiminde çağrılmalı. */
   unlock() {
@@ -10,7 +12,7 @@ export class AudioSystem {
     try {
       this.ctx = new AudioContext();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.35;
+      this.applyGain();
       this.master.connect(this.ctx.destination);
       this.startAmbience();
     } catch {
@@ -20,7 +22,16 @@ export class AudioSystem {
 
   setMuted(m: boolean) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.35;
+    this.applyGain();
+  }
+
+  setVolume(v: number) {
+    this.volume = Math.max(0, Math.min(1, v));
+    this.applyGain();
+  }
+
+  private applyGain() {
+    if (this.master) this.master.gain.value = this.muted ? 0 : 0.35 * this.volume;
   }
 
   private noiseBuffer(dur: number) {

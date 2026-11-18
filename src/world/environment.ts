@@ -32,7 +32,9 @@ export class Environment {
   private stars: THREE.Points;
   private tmp = new THREE.Color();
 
-  constructor(private scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
+  private shadowFrame = 0;
+
+  constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer) {
     this.sky = new Sky();
     this.sky.scale.setScalar(5000);
     this.sky.frustumCulled = false;
@@ -40,6 +42,8 @@ export class Environment {
     this.envSky = new Sky();
     this.envSky.scale.setScalar(5000);
     this.envScene.add(this.envSky);
+    // Gölge haritasını her karede değil, update içinde aralıklı yeniden çiziyoruz
+    renderer.shadowMap.autoUpdate = false;
     this.pmrem = new THREE.PMREMGenerator(renderer);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 4);
@@ -85,6 +89,7 @@ export class Environment {
     this.sun.shadow.mapSize.set(size, size);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null as any;
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   get clock() {
@@ -104,6 +109,8 @@ export class Environment {
   }
 
   update(dt: number, focus: THREE.Vector3, force = false) {
+    // Gölge haritası her 3 karede bir yenilenir (güneş yavaş hareket ettiği için görünmez)
+    this.renderer.shadowMap.needsUpdate = this.shadowFrame++ % 3 === 0;
     if (this.mode === 'cycle') {
       // 1 oyun saati ≈ 50 sn; gece iki kat hızlı geçer
       const night = this.time > 20.5 || this.time < 4.5;

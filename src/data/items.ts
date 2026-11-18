@@ -1,4 +1,3 @@
-import type { ClassId } from './classes';
 import type { WeaponKind } from '../entities/humanoid';
 
 export type ItemType = 'weapon' | 'armor' | 'helmet' | 'boots' | 'necklace' | 'ring' | 'shield' | 'earring' | 'bracelet' | 'belt' | 'potion' | 'material';
@@ -17,7 +16,6 @@ export interface ItemDef {
   /** 0 sıradan, 1 nadir, 2 destansı, 3 efsanevi */
   rarity: number;
   level: number;
-  cls?: ClassId;
   atk?: number;
   def?: number;
   hp?: number;
@@ -33,6 +31,12 @@ export interface ItemDef {
   size?: number;
   /** Kuşanıldığında kullanılacak silah modeli (varsayılan sınıf silahı) */
   weapon?: WeaponKind;
+  /** Silah menzili (metre). Yoksa savaşçının yakın dövüş menzili kullanılır. */
+  range?: number;
+  /** Kaç elle kuşanıldığı: çift el silahlar kalkan takılmasını engeller. */
+  hands?: 1 | 2;
+  /** Karakter modelindeki silah büyüklüğü (varsayılan 1). */
+  weaponScale?: number;
   /** Eşyanın karakter modelinde kullanılan görünümü */
   look?: { color: number; metal: number; rough: number };
 }
@@ -46,7 +50,8 @@ export interface ItemStack {
 const list: ItemDef[] = [];
 const add = (d: ItemDef) => list.push(d);
 
-// Silahlar: her sınıf için dört kademe
+// Silah kademeleri: her ailede beş kademe. Tek el silahlar kalkanla birlikte kuşanılır;
+// çift el silahlar kalkanın yerini alır (kalkan takılıyken kuşanılamaz, çift el silah varken kalkan takılamaz).
 const tiers = [
   { lvl: 1, atk: 12, price: 120, r: 0, look: { color: 0xc5c9ce, metal: 0.75, rough: 0.3 } },
   { lvl: 8, atk: 30, price: 900, r: 1, look: { color: 0x70b59c, metal: 0.8, rough: 0.26 } },
@@ -54,23 +59,25 @@ const tiers = [
   { lvl: 25, atk: 98, price: 16000, r: 3, look: { color: 0xf0bd58, metal: 0.9, rough: 0.2 } },
   { lvl: 31, atk: 132, price: 46000, r: 3, look: { color: 0xe06060, metal: 0.92, rough: 0.18 } },
 ];
-const weaponNames: Record<string, { cls: ClassId; icon: string; names: string[] }> = {
-  sword: { cls: 'warrior', icon: 'sword', names: ['Demir Kılıç', 'Bozkır Palası', 'Gökdemir Kılıcı', 'Ejder Dişi', 'Bozkurt Hakan Kılıcı'] },
-  dagger: { cls: 'assassin', icon: 'dagger', names: ['Çelik Hançer', 'Akrep İğnesi', 'Gece Fısıltısı', 'Hayalet Pençesi', 'Kan Gülü'] },
-  staff: { cls: 'mage', icon: 'staff', names: ['Meşe Asa', 'Ay Işığı Asası', 'Fırtına Çağıran', 'Kadim Yıldız Asası', 'Alev Yürek Asası'] },
+interface WeaponFamily {
+  icon: string; names: string[]; weapon: WeaponKind; hands: 1 | 2; atkMult: number; range?: number; modelScale?: number;
+}
+const weaponFamilies: Record<string, WeaponFamily> = {
+  sword: { icon: 'sword', names: ['Demir Kılıç', 'Bozkır Palası', 'Gökdemir Kılıcı', 'Ejder Dişi', 'Bozkurt Hakan Kılıcı'], weapon: 'sword', hands: 1, atkMult: 1 },
+  axe: { icon: 'axe', names: ['Demir Balta', 'Bozkır Baltası', 'Gökdemir Baltası', 'Ejder Baltası', 'Kadim Kesici'], weapon: 'axe', hands: 1, atkMult: 1.02 },
+  club: { icon: 'club', names: ['Meşe Topuz', 'Demir Topuz', 'Taş Topuz', 'Kadim Topuz', 'Kral Topuzu'], weapon: 'club', hands: 1, atkMult: 0.95 },
+  mace: { icon: 'mace', names: ['Demir Gürz', 'Çelik Gürz', 'Yıldız Gürzü', 'Alev Gürzü', 'Dev Kırıcı Gürz'], weapon: 'club', hands: 1, atkMult: 1.05, modelScale: 1.12 },
+  gsword: { icon: 'sword', names: ['Çift El Kılıcı', 'Bozkır İki El Kılıcı', 'Gökdemir İki El Kılıcı', 'Ejder Çift El Kılıcı', 'Bozkurt Çift El Kılıcı'], weapon: 'sword', hands: 2, atkMult: 1.25, range: 3.1, modelScale: 1.35 },
+  gaxe: { icon: 'axe', names: ['Çift El Baltası', 'Bozkır İki El Baltası', 'Gökdemir İki El Baltası', 'Ejder Çift El Baltası', 'Kadim Çift El Yarıcı'], weapon: 'axe', hands: 2, atkMult: 1.25, range: 3.0, modelScale: 1.35 },
+  spear: { icon: 'spear', names: ['Avcı Mızrağı', 'Fırtına Mızrağı', 'Dev Avcısı Mızrağı', 'Ejder Mızrağı', 'Kadim Kral Mızrağı'], weapon: 'spear', hands: 2, atkMult: 1.15, range: 3.6 },
 };
-for (const [key, w] of Object.entries(weaponNames)) {
+for (const [key, f] of Object.entries(weaponFamilies)) {
   tiers.forEach((t, i) => add({
-    id: `${key}${i + 1}`, name: w.names[i], type: 'weapon', icon: w.icon, rarity: t.r, level: t.lvl, cls: w.cls,
-    atk: Math.round(t.atk * (key === 'dagger' ? 0.9 : key === 'staff' ? 1.05 : 1)), crit: key === 'dagger' ? 4 + i * 2 : undefined,
-    price: t.price, size: key === 'dagger' ? 1 : i >= 3 ? 3 : 2, look: t.look,
+    id: `${key}${i + 1}`, name: f.names[i], type: 'weapon', icon: f.icon, rarity: t.r, level: t.lvl,
+    atk: Math.round(t.atk * f.atkMult), price: t.price, size: f.hands === 2 || i >= 3 ? 3 : 2, look: t.look,
+    weapon: f.weapon, hands: f.hands, range: f.range, weaponScale: f.modelScale,
   }));
 }
-
-// Mızraklar: savaşçıya özel, üç göz kaplayan uzun silahlar
-add({ id: 'spear1', name: 'Avcı Mızrağı', type: 'weapon', icon: 'spear', rarity: 1, level: 12, cls: 'warrior', atk: 44, price: 2400, size: 3, weapon: 'spear', look: { color: 0x8fa8b8, metal: 0.7, rough: 0.3 } });
-add({ id: 'spear2', name: 'Fırtına Mızrağı', type: 'weapon', icon: 'spear', rarity: 2, level: 20, cls: 'warrior', atk: 82, price: 9500, size: 3, weapon: 'spear', look: { color: 0x6fc2d8, metal: 0.85, rough: 0.22 } });
-add({ id: 'spear3', name: 'Dev Avcısı Mızrağı', type: 'weapon', icon: 'spear', rarity: 3, level: 27, cls: 'warrior', atk: 108, price: 19000, size: 3, weapon: 'spear', look: { color: 0xe0a35a, metal: 0.9, rough: 0.2 } });
 
 add({ id: 'armor1', name: 'Keten Cübbe', type: 'armor', icon: 'armor', rarity: 0, level: 1, def: 6, hp: 20, price: 100, size: 2, look: { color: 0x6a5a48, metal: 0, rough: 0.85 } });
 add({ id: 'armor2', name: 'Deri Zırh', type: 'armor', icon: 'armor', rarity: 1, level: 7, def: 16, hp: 60, price: 850, size: 2, look: { color: 0x5c3a22, metal: 0.1, rough: 0.6 } });
@@ -78,10 +85,8 @@ add({ id: 'armor3', name: 'Çelik Pullu Zırh', type: 'armor', icon: 'armor', ra
 add({ id: 'armor4', name: 'Altın Ejder Zırhı', type: 'armor', icon: 'armor', rarity: 3, level: 24, def: 60, hp: 280, price: 15000, size: 2, look: { color: 0xd9a441, metal: 1, rough: 0.28 } });
 add({ id: 'armor5', name: 'Savaş Lordu Plakası', type: 'armor', icon: 'armor', rarity: 2, level: 20, def: 47, hp: 200, price: 8500, size: 2, look: { color: 0x7a3b2e, metal: 0.85, rough: 0.3 } });
 add({ id: 'armor6', name: 'Karanlık Kral Zırhı', type: 'armor', icon: 'armor', rarity: 3, level: 29, def: 78, hp: 380, price: 34000, size: 2, look: { color: 0x3a2f4a, metal: 0.95, rough: 0.22 } });
-// Sınıf zırhları: yalnızca düşüşle elde edilen kuşak setleri
-add({ id: 'warplate', name: 'Bozkurt Plaka Zırhı', type: 'armor', icon: 'armor', rarity: 3, level: 22, cls: 'warrior', def: 56, hp: 320, price: 19000, size: 2, look: { color: 0x8a2f2a, metal: 0.9, rough: 0.26 } });
-add({ id: 'asnleather', name: 'Gölge Postu', type: 'armor', icon: 'armor', rarity: 3, level: 22, cls: 'assassin', def: 46, hp: 230, crit: 5, speed: 4, price: 19000, size: 2, look: { color: 0x2f2f3a, metal: 0.4, rough: 0.55 } });
-add({ id: 'magerobe', name: 'Yıldız Cübbesi', type: 'armor', icon: 'armor', rarity: 3, level: 22, cls: 'mage', def: 38, hp: 170, mp: 160, price: 19000, size: 2, look: { color: 0x2f4a7a, metal: 0.3, rough: 0.5 } });
+// Düşüşle elde edilen ağır savaşçı zırhı
+add({ id: 'warplate', name: 'Bozkurt Plaka Zırhı', type: 'armor', icon: 'armor', rarity: 3, level: 22, def: 56, hp: 320, price: 19000, size: 2, look: { color: 0x8a2f2a, metal: 0.9, rough: 0.26 } });
 
 add({ id: 'helm1', name: 'Deri Başlık', type: 'helmet', icon: 'helmet', rarity: 0, level: 3, def: 4, price: 180, look: { color: 0x805837, metal: 0.08, rough: 0.8 } });
 add({ id: 'helm2', name: 'Demir Miğfer', type: 'helmet', icon: 'helmet', rarity: 1, level: 10, def: 11, hp: 40, price: 1200, look: { color: 0x8495a8, metal: 0.82, rough: 0.28 } });
@@ -102,11 +107,11 @@ add({ id: 'ring2', name: 'Kan Taşı Yüzüğü', type: 'ring', icon: 'ring', ra
 add({ id: 'ring3', name: 'Devin Mührü', type: 'ring', icon: 'ring', rarity: 3, level: 22, atk: 26, crit: 6, hp: 100, price: 14000, look: { color: 0xe6bd55, metal: 0.9, rough: 0.19 } });
 add({ id: 'ring4', name: 'Taht Mührü', type: 'ring', icon: 'ring', rarity: 3, level: 26, atk: 38, crit: 8, hp: 160, price: 21000, look: { color: 0xf0d070, metal: 0.95, rough: 0.16 } });
 
-// Kalkanlar: Metin2 geleneğine uygun olarak savaşçıya özel
-add({ id: 'shield1', name: 'Ahşap Kalkan', type: 'shield', icon: 'shield', rarity: 0, level: 1, cls: 'warrior', def: 5, hp: 15, price: 120, look: { color: 0x7a5a34, metal: 0.05, rough: 0.85 } });
-add({ id: 'shield2', name: 'Demir Kalkan', type: 'shield', icon: 'shield', rarity: 1, level: 9, cls: 'warrior', def: 14, hp: 50, price: 1400, look: { color: 0x8a94a0, metal: 0.8, rough: 0.3 } });
-add({ id: 'shield3', name: 'Aslan Kalkan', type: 'shield', icon: 'shield', rarity: 2, level: 17, cls: 'warrior', def: 26, hp: 110, price: 6200, look: { color: 0xc79a45, metal: 0.85, rough: 0.24 } });
-add({ id: 'shield4', name: 'Ejder Kalkanı', type: 'shield', icon: 'shield', rarity: 3, level: 26, cls: 'warrior', def: 40, hp: 200, price: 16000, look: { color: 0xa03a30, metal: 0.9, rough: 0.2 } });
+// Kalkanlar: yalnızca yakın dövüş silahıyla kuşanılabilen savunma parçaları
+add({ id: 'shield1', name: 'Ahşap Kalkan', type: 'shield', icon: 'shield', rarity: 0, level: 1, def: 5, hp: 15, price: 120, look: { color: 0x7a5a34, metal: 0.05, rough: 0.85 } });
+add({ id: 'shield2', name: 'Demir Kalkan', type: 'shield', icon: 'shield', rarity: 1, level: 9, def: 14, hp: 50, price: 1400, look: { color: 0x8a94a0, metal: 0.8, rough: 0.3 } });
+add({ id: 'shield3', name: 'Aslan Kalkan', type: 'shield', icon: 'shield', rarity: 2, level: 17, def: 26, hp: 110, price: 6200, look: { color: 0xc79a45, metal: 0.85, rough: 0.24 } });
+add({ id: 'shield4', name: 'Ejder Kalkanı', type: 'shield', icon: 'shield', rarity: 3, level: 26, def: 40, hp: 200, price: 16000, look: { color: 0xa03a30, metal: 0.9, rough: 0.2 } });
 
 // Küpeler: saldırı ve kritik ağırlıklı takılar
 add({ id: 'earring1', name: 'Bakır Küpe', type: 'earring', icon: 'earring', rarity: 0, level: 4, atk: 3, crit: 1, price: 450, look: { color: 0xc78350, metal: 0.8, rough: 0.3 } });
@@ -155,7 +160,7 @@ export const SHOP_STOCK = [
 ];
 /** Silahçının sattığı silahlar; üst kademeler yalnızca düşüşle bulunur */
 export const WEAPON_STOCK = [
-  'sword1', 'sword2', 'sword3', 'dagger1', 'dagger2', 'dagger3', 'staff1', 'staff2', 'staff3', 'spear1',
+  'sword1', 'sword2', 'sword3', 'axe1', 'axe2', 'club1', 'club2', 'gsword1', 'gaxe1', 'spear1', 'spear2',
 ];
 /** Zırhçının sattığı zırh ve parçalar; üst kademeler yalnızca düşüşle bulunur */
 export const ARMOR_STOCK = [

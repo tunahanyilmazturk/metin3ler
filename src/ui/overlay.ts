@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Game } from '../game';
+import { NPC_LINES } from '../data/npcLines';
 
 interface Plate { el: HTMLDivElement; name: HTMLSpanElement; bar: HTMLElement; fill: HTMLElement; key: string }
 interface FloatText { el: HTMLDivElement; pos: THREE.Vector3; t: number }
@@ -11,6 +12,7 @@ export class Overlay {
   private plates: Plate[] = [];
   private texts: FloatText[] = [];
   private v = new THREE.Vector3();
+  private bubbles = new Map<string, { el: HTMLDivElement; t: number; idx: number; shownText: string }>();
 
   constructor(private game: Game, private root: HTMLElement) {
     for (let i = 0; i < MAX_PLATES; i++) {
@@ -42,6 +44,32 @@ export class Overlay {
     return true;
   }
 
+  /** NPC'ler yakına gelince kısa bir replik balonu gösterir; satırlar birkaç saniyede bir değişir. */
+  private updateBubbles(dt: number) {
+    const p = this.game.player;
+    for (const n of this.game.npcs) {
+      const lines = NPC_LINES[n.id];
+      if (!lines?.length) continue;
+      let b = this.bubbles.get(n.id);
+      if (!b) {
+        const el = document.createElement('div');
+        el.className = 'npc-bubble';
+        el.style.display = 'none';
+        this.root.appendChild(el);
+        b = { el, t: (n.id.length * 0.37) % 5, idx: 0, shownText: '' };
+        this.bubbles.set(n.id, b);
+      }
+      b.t += dt;
+      if (b.t > 5.5) { b.t = 0; b.idx = (b.idx + 1) % lines.length; }
+      const near = n.pos.distanceTo(p.pos) < 8;
+      if (!near || !this.project(n.pos.x, n.pos.y + n.height + 1.05, n.pos.z)) { b.el.style.display = 'none'; continue; }
+      const text = lines[b.idx];
+      if (b.shownText !== text) { b.shownText = text; b.el.textContent = text; }
+      b.el.style.display = '';
+      b.el.style.transform = `translate(-50%, -100%) translate(${this.v.x.toFixed(1)}px, ${this.v.y.toFixed(1)}px)`;
+    }
+  }
+
   update(dt: number) {
     const g = this.game, p = g.player;
     let used = 0;
@@ -71,6 +99,7 @@ export class Overlay {
       const cls = e.isStone ? 'stone' : e.def.boss ? 'boss' : e === p.target ? 'target' : '';
       show(`e${e.def.id}${cls}${engaged ? 1 : 0}`, `<b>Sv.${e.def.level}</b> ${e.def.name}`, cls, e.pos.x, e.pos.y + e.height + 0.3, e.pos.z, engaged || e.isStone ? e.hp / e.maxHp : -1);
     }
+    this.updateBubbles(dt);
     for (let i = used; i < MAX_PLATES; i++) {
       if (this.plates[i].el.style.display !== 'none') this.plates[i].el.style.display = 'none';
     }

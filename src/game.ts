@@ -69,6 +69,16 @@ export class Game {
   private last = performance.now();
   private saveTimer = 0;
   private hitStopT = 0;
+  /** Erişilebilirlik: sarsıntıyı azaltır. */
+  reduceShake = false;
+  /** Erişilebilirlik: flaş/parlama şiddetini düşürür. */
+  reduceFlash = false;
+  /** Erişilebilirlik: arayüzü büyütür. */
+  largeText = false;
+  /** Kamera fare hassasiyeti (0.5–2). */
+  sensitivity = 1;
+  /** Sağ üstte FPS sayacı. */
+  showFps = false;
 
   /** Kısa vuruş donması: dünya anlık yavaşlar, vuruş daha ağır hissettirir. */
   hitStop(t: number) { this.hitStopT = Math.max(this.hitStopT, t); }
@@ -113,6 +123,17 @@ export class Game {
     const settings = SaveSystem.loadSettings(window.matchMedia('(any-pointer: coarse)').matches ? 'low' : 'high');
     this.dayNightMode = settings.dayNight;
     this.audio.muted = settings.muted;
+    this.audio.volume = settings.volume;
+    this.reduceShake = settings.reduceShake;
+    this.reduceFlash = settings.reduceFlash;
+    this.effects.flashScale = settings.reduceFlash ? 0.25 : 1;
+    this.largeText = settings.largeText;
+    this.sensitivity = settings.sensitivity;
+    this.camera.sensitivity = settings.sensitivity;
+    this.showFps = settings.showFps;
+    this.updateFpsCounter();
+    document.getElementById('ui')?.classList.toggle('large-text', settings.largeText);
+    this.camera.shakeScale = settings.reduceShake ? 0.3 : 1;
     this.autoTrail = settings.autoTrail;
     this.setQuality(settings.quality, false);
     this.env.setMode(this.dayNightMode, this.menuCenter);
@@ -144,10 +165,82 @@ export class Game {
     else if (this.questNav.active && !this.questNav.walking) this.questNav.stop();
   }
 
+  setMuted(m: boolean) {
+    this.audio.setMuted(m);
+    this.persistSettings();
+  }
+
+  setVolume(v: number) {
+    this.audio.setVolume(v);
+    this.persistSettings();
+  }
+
+  setReduceShake(on: boolean) {
+    this.reduceShake = on;
+    this.camera.shakeScale = on ? 0.3 : 1;
+    this.persistSettings();
+  }
+
+  setReduceFlash(on: boolean) {
+    this.reduceFlash = on;
+    this.effects.flashScale = on ? 0.25 : 1;
+    this.persistSettings();
+  }
+
+  setLargeText(on: boolean) {
+    this.largeText = on;
+    document.getElementById('ui')?.classList.toggle('large-text', on);
+    this.persistSettings();
+  }
+
+  setSensitivity(v: number) {
+    this.sensitivity = Math.max(0.5, Math.min(2, v));
+    this.camera.sensitivity = this.sensitivity;
+    this.persistSettings();
+  }
+
+  setShowFps(on: boolean) {
+    this.showFps = on;
+    this.updateFpsCounter();
+    this.persistSettings();
+  }
+
+  /** Tüm ayarları varsayılana döndürür (karakter ve ilerleme etkilenmez). */
+  resetSettings() {
+    this.setQuality(matchMedia('(any-pointer: coarse)').matches ? 'low' : 'high');
+    this.setVolume(0.8);
+    this.setMuted(false);
+    this.setDayNightMode('cycle');
+    this.setAutoTrail(true);
+    this.setReduceShake(false);
+    this.setReduceFlash(false);
+    this.setLargeText(false);
+    this.setSensitivity(1);
+    this.setShowFps(false);
+  }
+
+  private updateFpsCounter() {
+    let el = document.getElementById('fps-counter');
+    if (!this.showFps) { el?.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fps-counter';
+      el.style.cssText = 'position:fixed;top:6px;right:8px;z-index:50;font:600 12px monospace;color:#9fe39f;pointer-events:none;text-shadow:0 1px 2px #000';
+      document.body.appendChild(el);
+    }
+    el.textContent = `${Math.round(this.fps)} FPS`;
+  }
+
   private persistSettings() {
     SaveSystem.saveSettings({
       quality: this.pipeline.quality,
       muted: this.audio.muted,
+      volume: this.audio.volume,
+      reduceShake: this.reduceShake,
+      reduceFlash: this.reduceFlash,
+      largeText: this.largeText,
+      sensitivity: this.sensitivity,
+      showFps: this.showFps,
       dayNight: this.dayNightMode,
       autoTrail: this.autoTrail,
     });
@@ -368,6 +461,7 @@ export class Game {
     this.last = now;
     this.time += dt;
     this.fps += (1 / Math.max(dt, 0.001) - this.fps) * 0.05;
+    if (this.showFps) this.updateFpsCounter();
 
     const worldDt = dt * (this.hitStopT > 0 ? 0.12 : 1);
     this.hitStopT = Math.max(0, this.hitStopT - dt);

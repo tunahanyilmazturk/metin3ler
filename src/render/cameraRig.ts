@@ -3,6 +3,20 @@ import { clamp, damp } from '../core/utils';
 import type { Input } from '../core/input';
 import type { Terrain } from '../world/terrain';
 
+/** Sarsıntının en büyük genliği (dünya birimi). */
+const SHAKE_MAX = 0.9;
+/** Trauma saniyede bu kadar azalır. */
+const SHAKE_DECAY = 1.6;
+
+/**
+ * Sarsıntı genliği: trauma'nın karesi küçük vuruşları hafif, büyükleri sert hissettirir.
+ * `phase` pürüzsüz bir zaman değeridir; her karede rastgele sayı üretilmez (titreme olmaz).
+ */
+export function shakeOffset(trauma: number, phase: number, scale: number): THREE.Vector2 {
+  const amp = trauma * trauma * SHAKE_MAX * scale;
+  return new THREE.Vector2(amp * Math.sin(phase * 1.7), amp * Math.sin(phase * 2.3));
+}
+
 /** Üçüncü şahıs yörünge kamerası: fareyle sürükleyerek döndür, tekerlekle yakınlaş. */
 export class CameraRig {
   yaw = Math.PI;
@@ -10,11 +24,17 @@ export class CameraRig {
   dist = 11;
   private distTarget = 11;
   private focus = new THREE.Vector3();
-  private shake = 0;
+  private trauma = 0;
+  private phase = 0;
+  /** 0 = sarsıntı yok, 1 = tam. "Sarsıntıyı azalt" ayarı bunu düşürür. */
+  shakeScale = 1;
+  /** Fare hassasiyeti çarpanı (0.5–2). */
+  sensitivity = 1;
 
   constructor(public camera: THREE.PerspectiveCamera, private terrain: Terrain) {}
 
-  addShake(a: number) { this.shake = Math.max(this.shake, a); }
+  /** Vuruş gibi olaylar sarsıntı birikimi ekler; değer üst üste gelince toplanır (en fazla 1). */
+  addShake(amount: number) { this.trauma = Math.min(1, this.trauma + amount); }
 
   snap(target: THREE.Vector3) { this.focus.copy(target); }
 
@@ -27,8 +47,8 @@ export class CameraRig {
   update(dt: number, target: THREE.Vector3, input: Input | null) {
     if (input) {
       if (input.mouse.down) {
-        this.yaw -= input.mouse.dx * 0.0055;
-        this.pitch = clamp(this.pitch + input.mouse.dy * 0.004, -0.12, 1.35);
+        this.yaw -= input.mouse.dx * 0.0055 * this.sensitivity;
+        this.pitch = clamp(this.pitch + input.mouse.dy * 0.004 * this.sensitivity, -0.12, 1.35);
       }
       if (input.down('KeyQ')) this.yaw += dt * 1.8;
       if (input.down('KeyE') && false) this.yaw -= dt * 1.8;
@@ -50,10 +70,12 @@ export class CameraRig {
     if (cam.position.y < ground) cam.position.y = ground;
     if (cam.position.y < 0.5) cam.position.y = 0.5;
 
-    if (this.shake > 0.001) {
-      cam.position.x += (Math.random() - 0.5) * this.shake;
-      cam.position.y += (Math.random() - 0.5) * this.shake;
-      this.shake *= Math.exp(-9 * dt);
+    if (this.trauma > 0) {
+      this.phase += dt * 30;
+      const off = shakeOffset(this.trauma, this.phase, this.shakeScale);
+      cam.position.x += off.x;
+      cam.position.y += off.y;
+      this.trauma = Math.max(0, this.trauma - SHAKE_DECAY * dt);
     }
     cam.lookAt(this.focus);
   }

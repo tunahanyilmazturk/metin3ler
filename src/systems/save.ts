@@ -23,7 +23,7 @@ export interface SaveData {
   vault?: (ItemStack | null)[];
 }
 
-export interface Settings { quality: Quality; muted: boolean; dayNight: DayNightMode; autoTrail: boolean }
+export interface Settings { quality: Quality; muted: boolean; volume: number; reduceShake: boolean; reduceFlash: boolean; largeText: boolean; sensitivity: number; showFps: boolean; dayNight: DayNightMode; autoTrail: boolean }
 
 const STAT_KEYS: StatKey[] = ['str', 'dex', 'vit', 'int'];
 const QUALITIES: Quality[] = ['low', 'medium', 'high', 'ultra'];
@@ -98,13 +98,42 @@ function isSaveData(value: unknown): value is SaveData {
     vault.every((item) => item === null || isItemStack(item));
 }
 
+/** Kaldırılan eşya kimlikleri → yerine geçen eşya (Gölge hançerleri yaya, Büyücü/Gölge zırhları savaşçı zırhına). */
+const LEGACY_ITEMS: Record<string, string> = {
+  dagger1: 'sword1', dagger2: 'sword2', dagger3: 'sword3', dagger4: 'sword4', dagger5: 'sword5',
+  bow1: 'spear1', bow2: 'spear2', bow3: 'spear3', bow4: 'spear4', bow5: 'spear5',
+  staff1: 'club1', staff2: 'club2', staff3: 'club3', staff4: 'club4', staff5: 'club5',
+  asnleather: 'armor5', magerobe: 'armor5',
+};
+
+function migrateItemRef(v: unknown): unknown {
+  if (!isRecord(v) || typeof v.id !== 'string') return v;
+  const id = LEGACY_ITEMS[v.id];
+  return id ? { ...v, id } : v;
+}
+
+/**
+ * Eski sürüm kayıtlarını güncel veriye çevirir: tek sınıf kaldığı için sınıf Savaşçı'ya
+ * sabitlenir ve kaldırılan eşyalar yerlerine geçer. Kayıt bozulmasın diye yalnızca eşya
+ * kimlikleri değiştirilir; geri kalan doğrulama `isSaveData` içinde yapılır.
+ */
+export function migrateSaveData(raw: unknown): unknown {
+  if (!isRecord(raw) || !isRecord(raw.player)) return raw;
+  const p = raw.player;
+  const player: Record<string, unknown> = { ...p, cls: 'warrior' };
+  if (Array.isArray(p.inv)) player.inv = p.inv.map(migrateItemRef);
+  if (isRecord(p.equip)) player.equip = Object.fromEntries(Object.entries(p.equip).map(([slot, item]) => [slot, migrateItemRef(item)]));
+  if (Array.isArray(p.hotbar)) player.hotbar = p.hotbar.map((e) => (isRecord(e) && e.t === 'item' ? migrateItemRef(e) : e));
+  return { ...raw, player };
+}
+
 /** localStorage üzerinde kayıt/yükleme. */
 export const SaveSystem = {
   load(): SaveData | null {
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) return null;
-      const data: unknown = JSON.parse(raw);
+      const data = migrateSaveData(JSON.parse(raw));
       return isSaveData(data) ? data : null;
     } catch {
       return null;
@@ -125,13 +154,19 @@ export const SaveSystem = {
           return {
             quality: QUALITIES.includes(value.quality as Quality) ? value.quality as Quality : defaultQuality,
             muted: typeof value.muted === 'boolean' ? value.muted : false,
+            volume: typeof value.volume === 'number' && value.volume >= 0 && value.volume <= 1 ? value.volume : 0.8,
+            reduceShake: typeof value.reduceShake === 'boolean' ? value.reduceShake : false,
+            reduceFlash: typeof value.reduceFlash === 'boolean' ? value.reduceFlash : false,
+            largeText: typeof value.largeText === 'boolean' ? value.largeText : false,
+            sensitivity: typeof value.sensitivity === 'number' && value.sensitivity >= 0.5 && value.sensitivity <= 2 ? value.sensitivity : 1,
+            showFps: typeof value.showFps === 'boolean' ? value.showFps : false,
             dayNight: DAY_NIGHT_MODES.includes(value.dayNight as DayNightMode) ? value.dayNight as DayNightMode : 'cycle',
             autoTrail: typeof value.autoTrail === 'boolean' ? value.autoTrail : true,
           };
         }
       }
     } catch { /* yoksay */ }
-    return { quality: defaultQuality, muted: false, dayNight: 'cycle', autoTrail: true };
+    return { quality: defaultQuality, muted: false, volume: 0.8, reduceShake: false, reduceFlash: false, largeText: false, sensitivity: 1, showFps: false, dayNight: 'cycle', autoTrail: true };
   },
   saveSettings(s: Settings) {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* yoksay */ }

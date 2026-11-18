@@ -3,6 +3,30 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+/**
+ * Bloom'dan önce HDR görüntüyü temizler. Çok parlak ışık patlamaları (efekt flaşları) yarım
+ * hassasiyetli tamponlarda sonsuza ya da NaN'a taşabilir; bloom bu değerleri mip zincirinde
+ * yayıp ekranı siyaha boyar. Sonsuzlar ve NaN'lar sıfırlanır, aşırı parlaklık üst sınırda kesilir.
+ */
+function makeSanitizePass(): ShaderPass {
+  return new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D tDiffuse;
+      varying vec2 vUv;
+      void main() {
+        vec4 c = texture2D(tDiffuse, vUv);
+        // NaN: kendisiyle eşit olmaz; sonsuz değerler aşağıdaki clamp ile kesilir
+        if (c.r != c.r || c.g != c.g || c.b != c.b) c = vec4(0.0, 0.0, 0.0, 1.0);
+        gl_FragColor = vec4(clamp(c.rgb, 0.0, 32.0), c.a);
+      }`,
+  });
+}
 
 export type Quality = 'low' | 'medium' | 'high' | 'ultra';
 
@@ -63,6 +87,7 @@ export class RenderPipeline {
     composer.readBuffer.samples = q.msaa;
     this.composer = composer;
     composer.addPass(new RenderPass(this.scene, this.camera));
+    composer.addPass(makeSanitizePass());
     if (q.bloom) composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.22, 0.6, 1.8));
     composer.addPass(makeGradedOutput());
   }

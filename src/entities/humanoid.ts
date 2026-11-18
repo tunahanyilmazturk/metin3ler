@@ -5,7 +5,7 @@ import type { TexPair } from '../render/textures';
 import type { ClassId } from '../data/classes';
 import { PlayerOutfit } from './playerOutfit';
 
-export type WeaponKind = 'sword' | 'dagger' | 'staff' | 'axe' | 'club' | 'spear' | 'none';
+export type WeaponKind = 'sword' | 'staff' | 'axe' | 'club' | 'spear' | 'none';
 
 export interface HumanLook {
   skin: number;
@@ -16,6 +16,10 @@ export interface HumanLook {
   hair: number;
   weapon: WeaponKind;
   weaponColor?: number;
+  /** Silah modelinin büyüklüğü (çift el silahlar için). */
+  weaponScale?: number;
+  /** Çift el silah: sol el silahın alt kısmını tutar. */
+  twoHanded?: boolean;
   /** Silah parıltısı (yüksek artı seviyeleri) */
   glow?: number;
   helmet: boolean;
@@ -77,6 +81,7 @@ export class Humanoid implements CreatureModel {
   private atkDur = 0.5;
   private atkIdx = 0;
   private flinch = 0;
+  private twoHanded = false;
   private dead = false;
   private deadT = 0;
   private weaponKind: WeaponKind;
@@ -85,6 +90,7 @@ export class Humanoid implements CreatureModel {
   riding = false;
 
   constructor(look: HumanLook) {
+    this.twoHanded = !!look.twoHanded;
     this.weaponKind = look.weapon;
     const b = look.bulk;
     const tx = look.tex ? { map: look.tex.map, normalMap: look.tex.normalMap, key: 'tex' } : {};
@@ -205,8 +211,13 @@ export class Humanoid implements CreatureModel {
       const ring = part(new THREE.TorusGeometry(0.025, 0.007, 5, 14), mat(look.ringColor, 0.25, 0.82), handR, 0.035, -0.02, 0.035, false);
       ring.rotation.x = Math.PI / 2;
     }
-    if (look.weapon !== 'none') handR.add(this.buildWeapon(look.weapon, look.glow, look.weaponColor));
-    if (look.weapon === 'dagger') handL.add(this.buildWeapon('dagger', look.glow, look.weaponColor));
+    if (look.weapon !== 'none') {
+      const wpn = this.buildWeapon(look.weapon, look.glow, look.weaponColor);
+      wpn.scale.setScalar(look.weaponScale ?? 1);
+      // Çift el silah gövdenin önünde, öne doğru eğik tutulur (Metin2 duruşu)
+      if (look.twoHanded) wpn.rotation.x = 1.85;
+      handR.add(wpn);
+    }
   }
 
   private buildWeapon(kind: WeaponKind, glow?: number, weaponColor?: number) {
@@ -216,10 +227,10 @@ export class Humanoid implements CreatureModel {
       : mat(weaponColor ?? 0xdfe6f0, 0.2, 1);
     const gold = mat(0xd4a03c, 0.32, 1);
     const wood = mat(0x4a3220, 0.8);
-    if (kind === 'sword' || kind === 'dagger') {
-      const len = kind === 'sword' ? 0.98 : 0.42;
+    if (kind === 'sword') {
+      const len = 0.98;
       part(new THREE.CylinderGeometry(0.017, 0.017, 0.2, 8), wood, g, 0, 0, 0);
-      part(new THREE.BoxGeometry(kind === 'sword' ? 0.22 : 0.12, 0.03, 0.05), gold, g, 0, 0.11, 0);
+      part(new THREE.BoxGeometry(0.22, 0.03, 0.05), gold, g, 0, 0.11, 0);
       part(new THREE.SphereGeometry(0.028, 8, 6), gold, g, 0, -0.11, 0);
       const blade = new THREE.CylinderGeometry(0.004, 0.032, len, 4, 1);
       blade.rotateY(Math.PI / 4);
@@ -322,6 +333,23 @@ export class Humanoid implements CreatureModel {
     // Sol kol sol bacağın tersine sallanır
     aLx = s * 0.62 * mb;
     aRx = -s * 0.62 * mb;
+    // Durağan duruşa ağırlık kayması ve kol nefesi (hareket yokken sönümlenir)
+    const still = 1 - mb;
+    if (!this.riding) this.hips.rotation.z = Math.sin(this.t * 0.9) * 0.025 * still;
+    aLz += Math.sin(this.t * 1.7 + 0.8) * 0.02 * still;
+    aRz -= Math.sin(this.t * 1.7) * 0.02 * still;
+    if (this.twoHanded && !this.riding) {
+      // Çift el: iki kol öne uzanır, sağ el arkada kabzayı, sol el ortada gövdeyi tutar
+      aRx = lerp(aRx, -0.6 + s * 0.04 * mb, 0.85);
+      // Dirsek neredeyse düz: kol açısı ile dirsek bükümü toplanıp mızrağın eğimini bozmasın
+      eR = lerp(eR, -0.1, 0.85);
+      aRz = lerp(aRz, -0.12, 0.85);
+      aLx = lerp(aLx, -1.15 + s * 0.04 * mb, 0.85);
+      eL = lerp(eL, -1.45, 0.85);
+      aLz = lerp(aLz, -0.2, 0.85);
+      // Gövde öne eğilir; silah belden aşağıda, yatay tutulur (Metin2 duruşu)
+      spX += 0.12;
+    }
     let attackLunge = 0;
 
     if (this.atkT >= 0) {
@@ -337,16 +365,9 @@ export class Humanoid implements CreatureModel {
         eR = lerp(eR, pose[2], w);
         spY = lerp(spY, pose[3], w);
         spX = lerp(spX, pose[4], w);
-        if (this.weaponKind === 'dagger' && this.atkIdx < 3) {
-          const counter = this.atkIdx === 1 ? 0.34 : -0.24;
-          aLx = lerp(aLx, pose[0] * 0.78 + counter, w);
-          aLz = lerp(aLz, -pose[1] * 0.82, w);
-          eL = lerp(eL, pose[2] * 0.78, w);
-        } else {
-          aLx = lerp(aLx, -0.55, w);
-          eL = lerp(eL, -1.15, w);
-          aLz = lerp(aLz, -0.25, w);
-        }
+        aLx = lerp(aLx, this.twoHanded ? -0.95 : -0.55, w);
+        eL = lerp(eL, this.twoHanded ? -1.5 : -1.15, w);
+        aLz = lerp(aLz, this.twoHanded ? -0.18 : -0.25, w);
       }
     }
     if (this.flinch > 0.01) {
@@ -358,7 +379,8 @@ export class Humanoid implements CreatureModel {
       this.flinch *= Math.exp(-9 * dt);
     }
     this.body.position.y = -attackPulse * 0.035;
-    this.body.position.z = attackLunge - attackPulse * 0.025;
+    // Vuruş aldığında gövde hafifçe geri iter
+    this.body.position.z = attackLunge - attackPulse * 0.025 - this.flinch * 0.06;
     this.spine.rotation.set(spX, spY, 0);
     this.head.rotation.set(-spX * 0.5, -spY * 0.4, 0);
     this.armR.rotation.set(aRx, 0, aRz);

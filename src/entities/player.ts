@@ -1,17 +1,16 @@
 import * as THREE from 'three';
-import { clamp, dampAngle, rand } from '../core/utils';
+import { clamp, dampAngle } from '../core/utils';
 import { CLASSES, ClassDef, ClassId, MAX_LEVEL, StatKey, expForLevel } from '../data/classes';
-import { EQUIP_SLOTS, EquipSlot, ITEMS, ItemStack, isEquip, itemLabel, plusMult } from '../data/items';
+import { EQUIP_SLOTS, EquipSlot, ITEMS, ItemStack, plusMult } from '../data/items';
 import { SKILLS, SkillDef } from '../data/skills';
-import {
-  INVENTORY_OPEN_SLOTS, INVENTORY_TOTAL_SLOTS,
-  InvCell, anchorOf, asStack, canPlaceAt, clearAt, compareItems, findSpace, hasSpaceFor, isLink, itemSize, placeAt,
-} from '../data/inventory';
+import { INVENTORY_TOTAL_SLOTS, InvCell, isLink } from '../data/inventory';
 import { PLAYER_SPAWN, WORLD_HALF } from '../data/world';
 import { HORSES } from '../data/horses';
 import { Quadruped } from './creatures';
 import { Humanoid } from './humanoid';
 import { disposeModel } from './model';
+import * as combat from './playerCombat';
+import * as inv from './playerInventory';
 import type { Enemy } from './enemy';
 import type { Npc } from './npc';
 import type { Game } from '../game';
@@ -40,11 +39,15 @@ export interface PlayerSave {
 export type HotbarEntry = { t: 'skill'; i: number } | { t: 'item'; id: string; plus: number };
 export const HOTBAR_SLOTS = 8;
 
-type Intent = { kind: 'attack'; enemy: Enemy } | { kind: 'npc'; npc: Npc } | { kind: 'move'; x: number; z: number } | null;
+export type Intent = { kind: 'attack'; enemy: Enemy } | { kind: 'npc'; npc: Npc } | { kind: 'move'; x: number; z: number } | null;
 export type ItemLocation = { inv: number } | { equip: EquipSlot };
-interface Buff { id: string; t: number; def: NonNullable<SkillDef['buff']>; color: number }
+export interface Buff { id: string; t: number; def: NonNullable<SkillDef['buff']>; color: number }
+export interface DashState { t: number; dx: number; dz: number; skill: SkillDef; hit: Set<Enemy> }
 
-/** Oyuncu karakteri: hareket, dövüş, yetenekler, istatistikler ve envanter. */
+/**
+ * Oyuncu karakteri. Durum ve hareketi burada tutulur; dövüş mantığı `playerCombat.ts`,
+ * envanter/kuşanma/kısayol mantığı `playerInventory.ts` içinde. Dış API bu sınıf üzerinden kalır.
+ */
 export class Player {
   pos = new THREE.Vector3();
   yaw = Math.PI;
@@ -79,20 +82,21 @@ export class Player {
   // Türetilmiş değerler
   maxHp = 1; maxMp = 1; atk = 1; def = 0; crit = 5; moveSpeed = 6.4; atkSpeed = 1;
 
-  private speedNow = 0;
-  private attackT = -1;
-  private attackDur = 0.5;
-  private attackIdx = 0;
-  private hitDone = false;
-  private comboTimer = 0;
-  private spin = 0;
-  private dash: { t: number; dx: number; dz: number; skill: SkillDef; hit: Set<Enemy> } | null = null;
-  private sinceCombat = 99;
-  private potionCd = 0;
-  private stepTimer = 0;
-  private fwd = new THREE.Vector3();
+  // Dövüş ve zamanlama durumu (playerCombat.ts ve playerInventory.ts tarafından da kullanılır)
+  /** @internal */ speedNow = 0;
+  /** @internal */ attackT = -1;
+  /** @internal */ attackDur = 0.5;
+  /** @internal */ attackIdx = 0;
+  /** @internal */ hitDone = false;
+  /** @internal */ comboTimer = 0;
+  /** @internal */ spin = 0;
+  /** @internal */ dash: DashState | null = null;
+  /** @internal */ sinceCombat = 99;
+  /** @internal */ potionCd = 0;
+  /** @internal */ stepTimer = 0;
+  /** @internal */ fwd = new THREE.Vector3();
 
-  constructor(private game: Game, public name: string, clsId: ClassId, save?: PlayerSave) {
+  constructor(readonly game: Game, public name: string, clsId: ClassId, save?: PlayerSave) {
     this.cls = CLASSES[clsId];
     this.stats = { ...this.cls.stats };
     if (save) {
@@ -100,7 +104,7 @@ export class Player {
       this.stats = { ...save.stats }; this.gold = save.gold;
       this.horseId = save.horse && Object.hasOwn(HORSES, save.horse) ? save.horse : null;
       this.inv = new Array(INV_SIZE).fill(null);
-      save.inv.slice(0, INV_SIZE).forEach((item, i) => { if (item) this.restoreStack(i, item); });
+      save.inv.slice(0, INV_SIZE).forEach((item, i) => { if (item) inv.restoreStack(this, i, item); });
       this.equip = { ...this.equip, ...save.equip };
       if (save.hotbar) save.hotbar.slice(0, HOTBAR_SLOTS).forEach((e, i) => { this.hotbar[i] = e; });
       else this.defaultHotbar();
@@ -141,6 +145,10 @@ export class Player {
 
   get skills() { return this.cls.skills.map((id) => SKILLS[id]); }
   get expNeed() { return expForLevel(this.level); }
+  /** Kuşanılan silahın tanımı; silahsızken undefined. */
+  get weaponDef() { return this.equip.weapon ? ITEMS[this.equip.weapon.id] : undefined; }
+  /** Vuruş menzili (metre): silahın menzili, yoksa savaşçının yakın dövüş menzili. */
+  get attackRange() { return this.weaponDef?.range ?? this.cls.range; }
   get inCombat() { return this.sinceCombat < 5; }
   get attackActive() { return this.attackT >= 0; }
   get canAutoCast() { return this.alive && this.attackT < 0 && !this.dash && !this.model.attacking; }
@@ -193,12 +201,12 @@ export class Player {
     this.model = new Humanoid({
       skin: 0xd2a584, cloth: this.cls.cloth, hair: this.cls.hair,
       armor: armor?.color ?? this.cls.cloth, armorMetal: armor?.metal ?? 0, armorRough: armor?.rough ?? 0.85,
-      weapon: w ? (ITEMS[w.id].weapon ?? this.cls.weapon) : 'none', weaponColor: weaponLook?.color, glow,
+      weapon: w ? (ITEMS[w.id].weapon ?? this.cls.weapon) : 'none', weaponColor: weaponLook?.color, weaponScale: w ? ITEMS[w.id].weaponScale : undefined, twoHanded: w ? ITEMS[w.id].hands === 2 : false, glow,
       helmet: !!this.equip.helmet, helmetColor: helmetLook?.color, helmetMetal: helmetLook?.metal, helmetRough: helmetLook?.rough,
       bootsColor: bootsLook?.color, bootsMetal: bootsLook?.metal,
       necklaceColor: necklaceLook?.color, ringColor: ringLook?.color,
       playerStyle: this.cls.id,
-      scale: 1, bulk: this.cls.id === 'warrior' ? 1.14 : this.cls.id === 'assassin' ? 0.93 : 1,
+      scale: 1, bulk: 1.14,
     });
     this.model.root.position.copy(this.pos);
     if (this.mounted) this.model.root.position.y += 0.66;
@@ -206,6 +214,17 @@ export class Player {
     this.model.riding = this.mounted;
     this.game.scene.add(this.model.root);
     if (!this.alive) this.model.die();
+  }
+
+  /** Karakteri dünyada (duvar ve çarpışmalara uyarak) hareket ettirir. */
+  tryMove(dx: number, dz: number) {
+    const t = this.game.terrain;
+    const lim = WORLD_HALF - 22;
+    const ok = (x: number, z: number) => Math.abs(x) < lim && Math.abs(z) < lim && t.walkable(x, z);
+    if (ok(this.pos.x + dx, this.pos.z + dz)) { this.pos.x += dx; this.pos.z += dz; }
+    else if (ok(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
+    else if (ok(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
+    this.game.colliders.resolve(this.pos, this.radius);
   }
 
   // ------------------------------------------------------------------ binek
@@ -283,18 +302,18 @@ export class Player {
     if (!this.inCombat) this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.02 * dt);
     this.mp = Math.min(this.maxMp, this.mp + this.maxMp * 0.022 * dt);
 
-    const inp = g.input;
+    const input = g.input;
     const cy = g.camera.yaw;
     let f = 0, r = 0;
-    if (inp.down('KeyW') || inp.down('ArrowUp')) f += 1;
-    if (inp.down('KeyS') || inp.down('ArrowDown')) f -= 1;
-    if (inp.down('KeyD') || inp.down('ArrowRight')) r += 1;
-    if (inp.down('KeyA') || inp.down('ArrowLeft')) r -= 1;
-    f -= inp.virtualMove.y;
-    r += inp.virtualMove.x;
+    if (input.down('KeyW') || input.down('ArrowUp')) f += 1;
+    if (input.down('KeyS') || input.down('ArrowDown')) f -= 1;
+    if (input.down('KeyD') || input.down('ArrowRight')) r += 1;
+    if (input.down('KeyA') || input.down('ArrowLeft')) r -= 1;
+    f -= input.virtualMove.y;
+    r += input.virtualMove.x;
     let mx = -Math.sin(cy) * f + Math.cos(cy) * r;
     let mz = -Math.cos(cy) * f - Math.sin(cy) * r;
-    let wantAttack = inp.down('Space') || inp.virtualAttack;
+    let wantAttack = input.down('Space') || input.virtualAttack;
     if (f !== 0 || r !== 0) this.intent = null;
 
     // Tıklamayla verilen niyet: hedefe yürü, saldır ya da konuş
@@ -305,7 +324,7 @@ export class Player {
         if (!e.alive) this.intent = null;
         else {
           const d = Math.hypot(e.pos.x - this.pos.x, e.pos.z - this.pos.z);
-          if (d > this.cls.range * 0.85 + e.radius) { mx = e.pos.x - this.pos.x; mz = e.pos.z - this.pos.z; }
+          if (d > this.attackRange * 0.85 + e.radius) { mx = e.pos.x - this.pos.x; mz = e.pos.z - this.pos.z; }
           else wantAttack = true;
         }
       } else if (it.kind === 'npc') {
@@ -319,10 +338,10 @@ export class Player {
       }
     }
 
-    const manualHotbar = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].some((key) => inp.hit(key));
+    const manualHotbar = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].some((key) => input.hit(key));
     const manualOverride = f !== 0 || r !== 0 || this.intent !== null || wantAttack || manualHotbar;
     // Öncelik: tıklama niyeti > görev rotası > oto av. Elle girdi rotayı iptal eder.
-    const waypoint = g.questNav.update(dt, manualOverride || inp.mouse.clicked || inp.hit('KeyE'));
+    const waypoint = g.questNav.update(dt, manualOverride || input.mouse.clicked || input.hit('KeyE'));
     const auto = g.autoHunt.update(dt, this, manualOverride);
     if (auto) {
       this.target = auto.target;
@@ -343,11 +362,11 @@ export class Player {
     this.speedNow = 0;
 
     if (this.dash) {
-      this.updateDash(dt);
+      combat.updateDash(this, dt);
     } else {
       if (ml > 0.01) {
         mx /= ml; mz /= ml;
-        let sp = this.moveSpeed * (inp.down('ShiftLeft') ? 1.4 : 1);
+        let sp = this.moveSpeed * (input.down('ShiftLeft') ? 1.4 : 1);
         if (this.attackT >= 0) sp *= 0.3;
         this.yaw = dampAngle(this.yaw, Math.atan2(mx, mz), 14, dt);
         const travel = waypoint && !auto ? Math.min(sp * dt, ml) : sp * dt;
@@ -359,12 +378,12 @@ export class Player {
           g.particles.emit(this.pos, { count: 3, color: 0x9a8468, speed: 0.6, up: 0.8, life: 0.7, size: 0.45, additive: false, spread: 0.3 });
         }
       }
-      if (wantAttack && this.attackT < 0) this.startAttack();
+      if (wantAttack && this.attackT < 0) combat.startAttack(this);
     }
 
     if (this.attackT >= 0) {
       this.attackT += dt / this.attackDur;
-      if (!this.hitDone && this.attackT >= 0.45) { this.hitDone = true; this.doHit(); }
+      if (!this.hitDone && this.attackT >= 0.45) { this.hitDone = true; combat.doHit(this); }
       if (this.attackT >= 1) { this.attackT = -1; this.comboTimer = 0.75; }
     } else if (this.comboTimer > 0) {
       this.comboTimer -= dt;
@@ -372,10 +391,10 @@ export class Player {
     }
 
     for (let i = 0; i < 4; i++) {
-      if (inp.hit(`Digit${i + 1}`)) this.useHotbar(i);
-      if (inp.hit(`F${i + 1}`)) this.useHotbar(4 + i);
+      if (input.hit(`Digit${i + 1}`)) this.useHotbar(i);
+      if (input.hit(`F${i + 1}`)) this.useHotbar(4 + i);
     }
-    if (inp.hit('KeyR')) this.toggleMount();
+    if (input.hit('KeyR')) this.toggleMount();
 
     this.pos.y = g.terrain.getHeight(this.pos.x, this.pos.z);
     this.model.root.position.copy(this.pos);
@@ -390,191 +409,13 @@ export class Player {
     this.model.update(dt, this.speedNow);
   }
 
-  private tryMove(dx: number, dz: number) {
-    const t = this.game.terrain;
-    const lim = WORLD_HALF - 22;
-    const ok = (x: number, z: number) => Math.abs(x) < lim && Math.abs(z) < lim && t.walkable(x, z);
-    if (ok(this.pos.x + dx, this.pos.z + dz)) { this.pos.x += dx; this.pos.z += dz; }
-    else if (ok(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
-    else if (ok(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
-    this.game.colliders.resolve(this.pos, this.radius);
-  }
+  // ---------------------------------------------------------------- dövüş (playerCombat.ts)
 
-  private forward() {
-    return this.fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-  }
+  useSkill(i: number) { combat.useSkill(this, i); }
+  takeDamage(raw: number, _from?: Enemy) { combat.takeDamage(this, raw); }
+  respawn() { combat.respawn(this); }
 
-  private faceTarget() {
-    const t = this.target;
-    if (t && t.alive && t.pos.distanceTo(this.pos) < this.cls.range + 8) {
-      this.yaw = Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z);
-    }
-  }
-
-  private startAttack() {
-    const g = this.game;
-    // Hedef yoksa önündeki en yakın düşmana dön
-    if (!this.target) this.target = g.combat.nearestEnemy(this.pos, this.cls.ranged ? 18 : 4.5);
-    this.faceTarget();
-    if (this.comboTimer <= 0 && this.attackT < 0 && this.attackIdx > 2) this.attackIdx = 0;
-    const idx = this.attackIdx % 3;
-    this.attackDur = (idx === 2 ? 0.64 : 0.5) / this.atkSpeed;
-    this.model.attack(this.attackDur, this.cls.ranged ? 3 : idx);
-    this.attackT = 0;
-    this.hitDone = false;
-    this.attackIdx = (idx + 1) % 3;
-    this.sinceCombat = Math.min(this.sinceCombat, 3);
-    g.audio.swing();
-  }
-
-  private doHit() {
-    const g = this.game;
-    const idx = (this.attackIdx + 2) % 3;
-    if (this.cls.ranged) {
-      g.combat.fireProjectile(this, 1, 0, 0x7fd0ff);
-      return;
-    }
-    const mult = [1, 1.1, 1.5][idx];
-    g.effects.slash(this.pos, this.yaw, this.cls.range + 0.3, this.cls.id === 'assassin' ? 0xb0a0ff : 0xfff0d0, [0.5, -0.5, 0][idx]);
-    const n = g.combat.frontDamage(this.cls.range, 1.15, mult, 6);
-    if (n > 0 && idx === 2) g.camera.addShake(0.18);
-  }
-
-  private updateDash(dt: number) {
-    const g = this.game, d = this.dash!;
-    d.t -= dt;
-    const sp = 34;
-    this.tryMove(d.dx * sp * dt, d.dz * sp * dt);
-    this.speedNow = 12;
-    g.particles.emit(this.pos.clone().setY(this.pos.y + 1), { count: 3, color: d.skill.color, speed: 1, life: 0.4, size: 0.6, spread: 0.6 });
-    for (const e of g.enemies) {
-      if (!e.alive || d.hit.has(e)) continue;
-      if (Math.hypot(e.pos.x - this.pos.x, e.pos.z - this.pos.z) < 2.1 + e.radius) {
-        d.hit.add(e);
-        g.combat.hitEnemy(e, d.skill.mult ?? 1, { stun: d.skill.stun });
-      }
-    }
-    if (d.t <= 0) this.dash = null;
-  }
-
-  // ---------------------------------------------------------------- yetenekler
-
-  useSkill(i: number) {
-    const g = this.game;
-    const sk = this.skills[i];
-    if (!sk || !this.alive || this.dash) return;
-    if (this.level < sk.level) { g.events.emit('log', { msg: `${sk.name} ${sk.level}. seviyede açılır.`, cls: 'warn' }); return; }
-    if (this.cooldowns[i] > 0) return;
-    if (this.mp < sk.mp) { g.events.emit('log', { msg: 'Yeterli mana yok.', cls: 'warn' }); return; }
-    this.mp -= sk.mp;
-    this.cooldowns[i] = sk.cd;
-    this.sinceCombat = Math.min(this.sinceCombat, 3);
-    this.faceTarget();
-    const fw = this.forward();
-    const chest = this.pos.clone().setY(this.pos.y + 1.1);
-    g.audio.cast();
-
-    switch (sk.type) {
-      case 'aoe':
-        this.model.attack(0.6, this.cls.ranged ? 3 : 1);
-        if (!this.cls.ranged) this.spin = 1;
-        g.effects.ring(this.pos, sk.radius!, sk.color, 0.5);
-        g.effects.flash(this.pos, sk.color, 70);
-        g.particles.emit(chest, { count: 70, color: sk.color, color2: 0xffffff, speed: sk.radius! * 2.2, life: 0.6, size: 0.55, flat: true, up: 1 });
-        g.combat.areaDamage(this.pos, sk.radius!, sk.mult!, { stun: sk.stun, slow: sk.slow });
-        if (sk.radius! > 6) { g.camera.addShake(0.6); g.audio.boom(); }
-        break;
-      case 'strike':
-        this.model.attack(0.45, 0);
-        g.effects.slash(this.pos, this.yaw, sk.radius! + 0.4, sk.color, 0.6);
-        g.effects.slash(this.pos, this.yaw, sk.radius! + 0.2, sk.color, -0.6);
-        g.combat.frontDamage(sk.radius!, 0.9, sk.mult!, 2);
-        break;
-      case 'dash':
-        this.model.attack(0.4, 1);
-        this.dash = { t: 0.26, dx: fw.x, dz: fw.z, skill: sk, hit: new Set() };
-        g.effects.ring(this.pos, 3, sk.color, 0.35);
-        break;
-      case 'buff':
-        this.model.attack(0.7, 3);
-        this.buffs = this.buffs.filter((b) => b.id !== sk.id);
-        this.buffs.push({ id: sk.id, t: sk.buff!.dur, def: sk.buff!, color: sk.color });
-        this.recalc();
-        g.effects.ring(this.pos, 3.5, sk.color, 0.7);
-        g.particles.emit(chest, { count: 50, color: sk.color, speed: 2.5, up: 4, life: 1, size: 0.5, spread: 1 });
-        g.events.emit('log', { msg: `${sk.name} etkin.`, cls: 'good' });
-        break;
-      case 'projectile':
-        this.model.attack(0.5, 3);
-        g.combat.fireProjectile(this, sk.mult!, sk.radius!, sk.color, 0.75);
-        break;
-      case 'targetAoe': {
-        this.model.attack(0.8, 3);
-        const t = this.target;
-        const c = t && t.alive && t.pos.distanceTo(this.pos) < 24 ? t.pos.clone() : this.pos.clone().addScaledVector(fw, 9);
-        c.y = g.terrain.getHeight(c.x, c.z);
-        g.effects.ring(c, sk.radius!, sk.color, 0.9);
-        for (let k = 0; k < 6; k++) {
-          g.combat.later(0.15 + k * 0.11, () => {
-            const p = c.clone();
-            p.x += rand(-1, 1) * sk.radius! * 0.6; p.z += rand(-1, 1) * sk.radius! * 0.6;
-            g.effects.bolt(p, sk.color);
-            g.effects.flash(p, sk.color, 140, 0.25);
-            g.particles.emit(p, { count: 24, color: sk.color, color2: 0xffffff, speed: 7, up: 4, life: 0.5, size: 0.5, gravity: 10 });
-            if (k % 2 === 0) g.audio.boom();
-            if (k === 2) { g.combat.areaDamage(c, sk.radius!, sk.mult!, { stun: sk.stun }); g.camera.addShake(0.5); }
-          });
-        }
-        break;
-      }
-    }
-    g.events.emit('changed');
-  }
-
-  // ---------------------------------------------------------------- hasar / gelişim
-
-  takeDamage(raw: number, _from?: Enemy) {
-    if (!this.alive) return;
-    const g = this.game;
-    const dmg = Math.max(1, Math.round(raw * rand(0.88, 1.12) - this.def * 0.5));
-    this.hp -= dmg;
-    this.sinceCombat = 0;
-    this.model.hit();
-    g.audio.hurt();
-    g.events.emit('damageText', { pos: this.pos, y: 2, text: `-${dmg}`, cls: 'hurt' });
-    g.events.emit('playerHurt');
-    g.camera.addShake(Math.min(0.4, 0.06 + (dmg / this.maxHp) * 1.5));
-    g.particles.emit(this.pos.clone().setY(this.pos.y + 1.2), { count: 8, color: 0xff3020, speed: 3, life: 0.35, size: 0.3 });
-    if (this.hp <= 0) {
-      this.hp = 0;
-      this.alive = false;
-      this.intent = null;
-      this.target = null;
-      this.dash = null;
-      this.attackT = -1;
-      this.dismount(true);
-      this.model.die();
-      g.events.emit('playerDied');
-    }
-  }
-
-  respawn() {
-    this.alive = true;
-    const lost = Math.min(this.exp, Math.ceil(this.expNeed * 0.02));
-    if (lost > 0) {
-      this.exp -= lost;
-      this.game.events.emit('log', { msg: `Yenilgi bedeli: -${lost} tecrübe`, cls: 'warn' });
-    }
-    this.pos.set(PLAYER_SPAWN.x, 0, PLAYER_SPAWN.z);
-    this.yaw = Math.PI;
-    this.game.camera.setView(0, 0.5, 11);
-    this.hp = this.maxHp;
-    this.mp = this.maxMp;
-    this.model.revive();
-    this.game.camera.snap(this.pos);
-    this.game.events.emit('playerRespawned');
-    this.game.events.emit('changed');
-  }
+  // ---------------------------------------------------------------- gelişim
 
   gainExp(n: number) {
     if (this.level >= MAX_LEVEL) return;
@@ -610,290 +451,22 @@ export class Player {
     this.game.events.emit('changed');
   }
 
-  // ---------------------------------------------------------------- envanter
+  // ---------------------------------------------------------------- envanter (playerInventory.ts)
 
-  /** Kayıttan gelen eşyayı eski yerine, sığmıyorsa ilk uygun boşluğa koyar. */
-  private restoreStack(i: number, s: ItemStack) {
-    const size = itemSize(s.id);
-    let pos = canPlaceAt(this.inv, i, size) ? i : findSpace(this.inv, size);
-    if (pos < 0) pos = findSpace(this.inv, size, INVENTORY_TOTAL_SLOTS);
-    if (pos < 0) {
-      pos = this.inv.indexOf(null);
-      if (pos < 0) return;
-      this.inv[pos] = s;
-      return;
-    }
-    placeAt(this.inv, pos, s, size);
-  }
-
-  /** Gözdeki eşyayı döndürür; kaplanan hücreler çapaya çözümlenir. */
-  stackAt(i: number): ItemStack | null {
-    const c = this.inv[i];
-    if (!c) return null;
-    return isLink(c) ? asStack(this.inv[c.link]) : c;
-  }
-
-  /** i gözünün çapa indeksini verir. */
-  anchorIndex(i: number) { return anchorOf(this.inv, i); }
-
-  /** Eşyayı istenen çapaya (sığarsa) ya da ilk uygun boşluğa koyar. */
-  private insert(s: ItemStack, at?: number): number {
-    const size = itemSize(s.id);
-    const pos = at !== undefined && canPlaceAt(this.inv, at, size) ? at : findSpace(this.inv, size);
-    if (pos >= 0) placeAt(this.inv, pos, s, size);
-    return pos;
-  }
-
-  /** i gözündeki eşyayı tüm ayak iziyle birlikte kaldırır ve döndürür. */
-  removeAt(i: number): ItemStack | null {
-    const a = this.anchorIndex(i);
-    const s = this.inv[a];
-    if (!s || isLink(s)) return null;
-    clearAt(this.inv, a, itemSize(s.id));
-    return s;
-  }
-
-  /** Verilen eşyalar açık envantere sığar mı? */
-  fitsAll(ids: string[]) { return hasSpaceFor(this.inv, ids); }
-
-  addItem(id: string, count = 1, plus = 0, silent = false) {
-    const d = ITEMS[id];
-    if (d.stack) {
-      const ex = asStack(this.inv.slice(0, INVENTORY_OPEN_SLOTS).find((c) => asStack(c)?.id === id) ?? null);
-      if (ex) { ex.count += count; if (!silent) this.game.events.emit('changed'); return true; }
-    }
-    const s: ItemStack = { id, plus, count: d.stack ? count : 1 };
-    if (this.insert(s) < 0) {
-      this.game.events.emit('log', { msg: 'Envanter dolu!', cls: 'warn' });
-      return false;
-    }
-    if (!silent) this.game.events.emit('changed');
-    return true;
-  }
-
-  canAddItem(id: string) {
-    const d = ITEMS[id];
-    if (!d) return false;
-    if (d.stack && this.inv.slice(0, INVENTORY_OPEN_SLOTS).some((c) => asStack(c)?.id === id)) return true;
-    return findSpace(this.inv, itemSize(id)) >= 0;
-  }
-
-  /** Akıllı sıralama: tür/enderlik/seviye düzeninde yeniden yerleştirir. */
-  sortInventory() {
-    const stacks: ItemStack[] = [];
-    for (let i = 0; i < INVENTORY_OPEN_SLOTS; i++) {
-      const c = asStack(this.inv[i]);
-      if (c) stacks.push(c);
-    }
-    if (stacks.length < 2) return;
-    stacks.sort(compareItems);
-    const snapshot = this.inv.slice(0, INVENTORY_OPEN_SLOTS);
-    this.inv.fill(null, 0, INVENTORY_OPEN_SLOTS);
-    for (const s of stacks) {
-      if (this.insert(s) < 0) {
-        snapshot.forEach((c, i) => { this.inv[i] = c; });
-        this.game.events.emit('log', { msg: 'Sıralama için yer yok.', cls: 'warn' });
-        return;
-      }
-    }
-    this.game.events.emit('log', { msg: 'Envanter düzenlendi.' });
-    this.game.events.emit('changed');
-  }
-
-  moveItem(from: ItemLocation, to: ItemLocation) {
-    const validLocation = (location: ItemLocation) =>
-      !('inv' in location) || (Number.isInteger(location.inv) && location.inv >= 0 && location.inv < INVENTORY_OPEN_SLOTS);
-    if (!validLocation(from) || !validLocation(to)) return false;
-
-    if ('inv' in from) from = { inv: this.anchorIndex(from.inv) };
-    if ('inv' in to) to = { inv: this.anchorIndex(to.inv) };
-    const sameSlot = ('inv' in from && 'inv' in to && from.inv === to.inv) ||
-      ('equip' in from && 'equip' in to && from.equip === to.equip);
-    if (sameSlot) return false;
-
-    const source: ItemStack | null = 'inv' in from ? asStack(this.inv[from.inv]) : this.equip[from.equip];
-    const target: ItemStack | null = 'inv' in to ? asStack(this.inv[to.inv]) : this.equip[to.equip];
-    if (!source) return false;
-
-    const canEquip = (item: ItemStack, slot: EquipSlot) => {
-      const def = ITEMS[item.id];
-      if (!isEquip(def) || def.type !== slot) return false;
-      if (def.cls && def.cls !== this.cls.id) {
-        this.game.events.emit('log', { msg: `${def.name}: sınıfın bu eşyayı kullanamaz.`, cls: 'warn' });
-        return false;
-      }
-      if (def.level > this.level) {
-        this.game.events.emit('log', { msg: `${def.name} için ${def.level}. seviye gerekli.`, cls: 'warn' });
-        return false;
-      }
-      return true;
-    };
-
-    if ('equip' in to && !canEquip(source, to.equip)) return false;
-    if ('equip' in from && target && !canEquip(target, from.equip)) return false;
-
-    const noRoom = () => {
-      this.game.events.emit('log', { msg: 'Eşyayı koyacak yer yok.', cls: 'warn' });
-      return false;
-    };
-
-    if ('inv' in from && 'inv' in to) {
-      if (target && source.id === target.id && ITEMS[source.id].stack) {
-        target.count += source.count;
-        this.removeAt(from.inv);
-      } else {
-        const sa = itemSize(source.id);
-        this.removeAt(from.inv);
-        if (!target) {
-          this.insert(source, to.inv);
-        } else if (canPlaceAt(this.inv, to.inv, sa)) {
-          const sb = itemSize(target.id);
-          this.removeAt(to.inv);
-          placeAt(this.inv, to.inv, source, sa);
-          if (this.insert(target, from.inv) < 0) {
-            this.removeAt(to.inv);
-            placeAt(this.inv, to.inv, target, sb);
-            placeAt(this.inv, from.inv, source, sa);
-            return noRoom();
-          }
-        } else {
-          placeAt(this.inv, from.inv, source, sa);
-          return noRoom();
-        }
-      }
-    } else if ('equip' in to) {
-      const sa = itemSize(source.id);
-      this.removeAt((from as { inv: number }).inv);
-      const old = this.equip[to.equip];
-      this.equip[to.equip] = source;
-      if (old && this.insert(old, (from as { inv: number }).inv) < 0) {
-        this.equip[to.equip] = old;
-        placeAt(this.inv, (from as { inv: number }).inv, source, sa);
-        return noRoom();
-      }
-    } else {
-      const freed = target ? this.removeAt((to as { inv: number }).inv) : null;
-      if (this.insert(source, (to as { inv: number }).inv) < 0) {
-        if (freed) placeAt(this.inv, (to as { inv: number }).inv, freed, itemSize(freed.id));
-        return noRoom();
-      }
-      this.equip[(from as { equip: EquipSlot }).equip] = freed;
-    }
-
-    if ('equip' in from || 'equip' in to) {
-      this.recalc();
-      this.refreshModel();
-    }
-    this.game.audio.click();
-    this.game.events.emit('changed');
-    return true;
-  }
-
-  countItem(id: string) {
-    return this.inv.slice(0, INVENTORY_OPEN_SLOTS)
-      .reduce((n, c) => n + (asStack(c)?.id === id ? asStack(c)!.count : 0), 0);
-  }
-
-  removeItem(id: string, count: number) {
-    for (let i = 0; i < INVENTORY_OPEN_SLOTS && count > 0; i++) {
-      const s = asStack(this.inv[i]);
-      if (!s || s.id !== id) continue;
-      const take = Math.min(count, s.count);
-      s.count -= take;
-      count -= take;
-      if (s.count <= 0) clearAt(this.inv, i, itemSize(id));
-    }
-  }
-
-  /** Envanter yuvasındaki eşyayı kullanır ya da kuşanır. */
-  useSlot(i: number) {
-    if (!Number.isInteger(i) || i < 0 || i >= INVENTORY_OPEN_SLOTS) return;
-    const a = this.anchorIndex(i);
-    const s = asStack(this.inv[a]);
-    if (!s) return;
-    const d = ITEMS[s.id];
-    const g = this.game;
-    if (d.type === 'potion') {
-      if (this.potionCd > 0 || !this.alive) return;
-      if (d.heal && this.hp >= this.maxHp) return;
-      if (d.mana && this.mp >= this.maxMp) return;
-      this.potionCd = 0.8;
-      if (d.heal) { this.hp = Math.min(this.maxHp, this.hp + d.heal); g.events.emit('damageText', { pos: this.pos, y: 2.2, text: `+${d.heal}`, cls: 'heal' }); }
-      if (d.mana) { this.mp = Math.min(this.maxMp, this.mp + d.mana); g.events.emit('damageText', { pos: this.pos, y: 2.2, text: `+${d.mana}`, cls: 'mana' }); }
-      g.particles.emit(this.pos, { count: 22, color: d.heal ? 0xff5050 : 0x50a0ff, speed: 1, up: 3.5, life: 0.9, size: 0.4, spread: 1 });
-      g.audio.pickup();
-      s.count--;
-      if (s.count <= 0) clearAt(this.inv, a, itemSize(s.id));
-      g.events.emit('changed');
-    } else if (isEquip(d)) {
-      if (this.moveItem({ inv: a }, { equip: d.type as EquipSlot }))
-        g.events.emit('log', { msg: `${itemLabel(s)} kuşanıldı.` });
-    }
-  }
-
-  unequip(slot: EquipSlot) {
-    const s = this.equip[slot];
-    if (!s) return;
-    if (this.insert(s) < 0) { this.game.events.emit('log', { msg: 'Envanter dolu!', cls: 'warn' }); return; }
-    this.equip[slot] = null;
-    this.recalc();
-    this.refreshModel();
-    this.game.events.emit('changed');
-  }
-
-  /** Han yemeği gibi yetenek dışı geçici güçlendirme uygular. */
-  addBuff(id: string, def: NonNullable<SkillDef['buff']>, color = 0xf0c040) {
-    this.buffs = this.buffs.filter((b) => b.id !== id);
-    this.buffs.push({ id, t: def.dur, def, color });
-    this.recalc();
-    this.game.events.emit('changed');
-  }
-
-  /** Kısayol çubuğu gözünü tetikler: yetenek kullanır ya da eşyayı envanterden bulup kullanır/kuşanır. */
-  useHotbar(i: number) {
-    const e = this.hotbar[i];
-    if (!e) return;
-    if (e.t === 'skill') { this.useSkill(e.i); return; }
-    const idx = this.findHotbarItem(e);
-    if (idx < 0) {
-      this.game.events.emit('log', { msg: `${ITEMS[e.id]?.name ?? 'Eşya'} envanterde kalmadı.`, cls: 'warn' });
-      return;
-    }
-    this.useSlot(idx);
-  }
-
-  /** Çubuktaki eşyanın envanterdeki çapa indeksini bulur; iksirler aynı türden başka bir iksire düşer. */
-  private findHotbarItem(e: { id: string; plus: number }): number {
-    for (let i = 0; i < INVENTORY_OPEN_SLOTS; i++) {
-      if (anchorOf(this.inv, i) !== i) continue;
-      const s = asStack(this.inv[i]);
-      if (s && s.id === e.id && s.plus === e.plus) return i;
-    }
-    const d = ITEMS[e.id];
-    if (d?.type === 'potion') {
-      for (let i = 0; i < INVENTORY_OPEN_SLOTS; i++) {
-        if (anchorOf(this.inv, i) !== i) continue;
-        const s = asStack(this.inv[i]);
-        const sd = s && ITEMS[s.id];
-        if (s && sd?.type === 'potion' && !!sd.heal === !!d.heal) return i;
-      }
-    }
-    return -1;
-  }
-
-  usePotion(kind: 'hp' | 'mp') {
-    const i = this.inv.slice(0, INVENTORY_OPEN_SLOTS).findIndex((c) => {
-      const s = asStack(c);
-      return s && (kind === 'hp' ? ITEMS[s.id].heal : ITEMS[s.id].mana);
-    });
-    if (i >= 0) this.useSlot(i);
-    else this.game.events.emit('log', { msg: kind === 'hp' ? 'Can iksirin kalmadı.' : 'Mana iksirin kalmadı.', cls: 'warn' });
-  }
-
-  potionCount(kind: 'hp' | 'mp') {
-    return this.inv.reduce((n, c) => {
-      const s = asStack(c);
-      return n + (s && (kind === 'hp' ? ITEMS[s.id].heal : ITEMS[s.id].mana) ? s.count : 0);
-    }, 0);
-  }
+  stackAt(i: number): ItemStack | null { return inv.stackAt(this, i); }
+  anchorIndex(i: number) { return inv.anchorIndex(this, i); }
+  removeAt(i: number): ItemStack | null { return inv.removeAt(this, i); }
+  fitsAll(ids: string[]) { return inv.fitsAll(this, ids); }
+  addItem(id: string, count = 1, plus = 0, silent = false) { return inv.addItem(this, id, count, plus, silent); }
+  canAddItem(id: string) { return inv.canAddItem(this, id); }
+  sortInventory() { inv.sortInventory(this); }
+  moveItem(from: ItemLocation, to: ItemLocation) { return inv.moveItem(this, from, to); }
+  countItem(id: string) { return inv.countItem(this, id); }
+  removeItem(id: string, count: number) { inv.removeItem(this, id, count); }
+  useSlot(i: number) { inv.useSlot(this, i); }
+  unequip(slot: EquipSlot) { inv.unequip(this, slot); }
+  addBuff(id: string, def: NonNullable<SkillDef['buff']>, color = 0xf0c040) { inv.addBuff(this, id, def, color); }
+  useHotbar(i: number) { inv.useHotbar(this, i); }
+  usePotion(kind: 'hp' | 'mp') { inv.usePotion(this, kind); }
+  potionCount(kind: 'hp' | 'mp') { return inv.potionCount(this, kind); }
 }

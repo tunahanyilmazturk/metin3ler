@@ -271,7 +271,7 @@ export class AutoHunt {
       const dx = target.pos.x - player.pos.x;
       const dz = target.pos.z - player.pos.z;
       const distance = Math.hypot(dx, dz);
-      const reach = player.cls.range * 0.85 + target.radius;
+      const reach = player.attackRange * 0.85 + target.radius;
       if (distance > reach) {
         this.setStatus('Hedefe ilerliyor');
         return { target, moveTo: { x: target.pos.x, z: target.pos.z }, attack: false };
@@ -386,7 +386,7 @@ export class AutoHunt {
           Math.hypot(enemy.pos.x - player.pos.x, enemy.pos.z - player.pos.z) <= (skill.radius ?? 0) + enemy.radius &&
           Math.hypot(enemy.pos.x - this.center.x, enemy.pos.z - this.center.z) <= this.settings.radius);
       } else if (skill.type === 'strike') {
-        useful = distance <= (skill.radius ?? player.cls.range) + target.radius;
+        useful = distance <= (skill.radius ?? player.attackRange) + target.radius;
       } else if (skill.type === 'projectile' || skill.type === 'targetAoe') {
         useful = distance <= 24;
       } else if (skill.type === 'buff') {

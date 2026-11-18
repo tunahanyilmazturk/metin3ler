@@ -8,6 +8,9 @@ import type { Terrain } from './terrain';
 
 const GRASS_TILE = 72;
 const GRASS_MAX = 120000;
+/** Bu mesafeden uzaktaki ağaç/kaya gölge yaymaz (gölge haritası maliyetini düşürür). */
+const SHADOW_RANGE = 70;
+let castTick = 0;
 
 /** Köşe renklerini (sahte ortam gölgesi) ekler ve geometriyi birleştirmeye hazırlar. */
 function prep(geo: THREE.BufferGeometry, shade: (x: number, y: number, z: number) => number) {
@@ -70,13 +73,23 @@ export class Vegetation {
   }
 
   update(time: number, player: THREE.Vector3) {
+    // Gölge yayıcılar: yalnızca oyuncuya yakın parçalar; 10 karede bir denetlenir
+    if (++castTick % 10 === 0) {
+      for (const child of this.group.children) {
+        const im = child as THREE.InstancedMesh;
+        if (!im.isInstancedMesh || !im.boundingSphere) continue;
+        const c = im.boundingSphere.center;
+        im.castShadow = Math.hypot(c.x - player.x, c.z - player.z) < SHADOW_RANGE + im.boundingSphere.radius;
+      }
+    }
     this.grassUniforms.uTime.value = time;
     this.grassUniforms.uPlayer.value.copy(player);
   }
 
   private async buildGrass(onProgress: (progress: number) => void) {
     // Tek bir yaprak: tabandan uca daralan şerit
-    const segs = 4;
+    // 3 segment: 6 üçgen/yaprak (eskiden 8); bükülme hâlâ yumuşak görünür, çizim yükü düşer
+    const segs = 3;
     const verts: number[] = [];
     const idx: number[] = [];
     for (let i = 0; i <= segs; i++) {

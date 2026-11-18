@@ -55,7 +55,7 @@ export class Combat {
       const nx = e.pos.x + (dx / d) * kb, nz = e.pos.z + (dz / d) * kb;
       if (g.terrain.walkable(nx, nz)) { e.pos.x = nx; e.pos.z = nz; }
     }
-    g.effects.flash(at, crit ? 0xffc060 : 0xff5838, crit ? 55 : 30, 0.1);
+    g.effects.flash(at, crit ? 0xffb050 : 0xff6a40, crit ? 22 : 9, 0.14);
     e.damage(dmg, opts);
     g.hitStop(!e.alive ? 0.11 : crit ? 0.085 : 0.045);
   }

@@ -18,32 +18,35 @@ import type { ItemRef } from '../systems/economy';
 import { CharacterPreview } from './characterPreview';
 import type { Game } from '../game';
 import { icon } from './icons';
+import { renderInventory, renderVault } from './panels/inventory';
+import { renderCharacter } from './panels/character';
+import { renderShop } from './panels/shop';
+import { renderTravel, renderInn, renderStable, renderSmith } from './panels/services';
+import { renderQuest } from './panels/quest';
+import { renderSettings } from './panels/settingsMenu';
+import { renderAutoHunt } from './panels/settings';
 
+export type SettingsTab = 'graphics' | 'sound' | 'game' | 'controls' | 'system';
 export type WinName = 'inv' | 'char' | 'shop' | 'smith' | 'quest' | 'settings' | 'autohunt' | 'vault' | 'travel' | 'inn' | 'stable';
 
 const TITLES: Record<WinName, string> = {
   inv: 'Envanter', char: 'Karakter', shop: 'Tüccar Sevinç', smith: 'Demirci Bora', quest: 'Bilge Aksakal', settings: 'Ayarlar', autohunt: 'Oto Av',
   vault: 'Kasadar Asude', travel: 'Rehber Davut', inn: 'Hancı Gülsüm', stable: 'Seyis Rahmi',
 };
-const STAT_NAMES: Record<StatKey, [string, string]> = {
-  str: ['Güç', 'Savaşçının saldırı gücünü artırır'],
-  dex: ['Çeviklik', 'Kritik şansı ve saldırı hızı; Gölge\'nin saldırı gücü'],
-  vit: ['Dayanıklılık', 'Can ve savunmayı artırır'],
-  int: ['Zekâ', 'Manayı artırır; Büyücü\'nün saldırı gücü'],
-};
 
 /** Oyun pencereleri: envanter, karakter, dükkân, demirci, görev ve ayarlar. */
 export class Windows {
-  private els = {} as Record<WinName, HTMLDivElement>;
-  private open = new Set<WinName>();
-  private smithRef: ItemRef | null = null;
-  private characterPreview: CharacterPreview | null = null;
-  private inventoryPage = 0;
-  private shopNpcId = 'merchant';
-  private shopCat = 'all';
-  private charTab: 'stats' | 'skills' | 'combat' = 'stats';
+  els = {} as Record<WinName, HTMLDivElement>;
+  open = new Set<WinName>();
+  smithRef: ItemRef | null = null;
+  characterPreview: CharacterPreview | null = null;
+  inventoryPage = 0;
+  shopNpcId = 'merchant';
+  shopCat = 'all';
+  charTab: 'stats' | 'skills' | 'combat' = 'stats';
+  settingsTab: SettingsTab = 'graphics';
 
-  constructor(private game: Game, root: HTMLElement, private tooltip: HTMLElement) {
+  constructor(readonly game: Game, root: HTMLElement, private tooltip: HTMLElement) {
     (Object.keys(TITLES) as WinName[]).forEach((name) => {
       const el = document.createElement('div');
       el.className = `win win-${name} hidden`;
@@ -195,7 +198,7 @@ export class Windows {
 
   // ------------------------------------------------------------------ çizim
 
-  private slot(s: ItemStack | null, attrs: string, extra = '') {
+  slot(s: ItemStack | null, attrs: string, extra = '') {
     if (!s) return `<div class="slot empty ${extra}" ${attrs}></div>`;
     const d = ITEMS[s.id];
     const color = d.icon === 'potion' ? '#ff5a4a' : d.icon === 'potionmp' ? '#4a9cff' : RARITY_COLORS[d.rarity];
@@ -203,7 +206,7 @@ export class Windows {
   }
 
   /** Çok hücreli eşyaları açık ızgara konumu ve boyut aralığıyla çizer. */
-  private invCell(i: number) {
+  invCell(i: number) {
     const p = this.game.player;
     const c = p.inv[i];
     if (c && isLink(c)) return '';
@@ -218,450 +221,19 @@ export class Windows {
 
   private render(n: WinName) {
     const body = this.els[n].querySelector('.body') as HTMLElement;
-    const g = this.game, p = g.player;
-    if (!p) return;
+    if (!this.game.player) return;
     switch (n) {
-      case 'inv': {
-        const mode = this.open.has('shop') ? 'Sağ tık: sat' : this.open.has('smith') ? 'Sol tık: yükseltmek için seç' : this.open.has('vault') ? 'Sağ tık: kasaya koy' : 'Sağ tık / çift tık: kullan veya kuşan';
-        const pageStart = this.inventoryPage * INVENTORY_PAGE_SIZE;
-        const equipmentSlot = (slot: EquipSlot) => `
-          <div class="paperdoll-equip" title="${SLOT_NAMES[slot]}">
-            ${this.slot(p.equip[slot], `data-equip="${slot}" aria-label="${SLOT_NAMES[slot]}"`, 'paperdoll-slot')}
-            <small>${SLOT_NAMES[slot]}</small>
-          </div>`;
-        body.innerHTML = `
-          <div class="inventory-layout">
-            <section class="inventory-paperdoll">
-              <div class="inventory-section-title"><span>Karakter</span><span>Giydiklerin</span></div>
-              <div class="paperdoll-stage">
-                <div class="paperdoll-rail">${(['weapon', 'shield', 'earring'] as EquipSlot[]).map(equipmentSlot).join('')}</div>
-                <div class="paperdoll-portrait">
-                  <div class="paperdoll-canvas-host"></div>
-                  <div class="paperdoll-caption"><b data-inventory-name></b><small>Seviye ${p.level} · ${p.cls.name}</small></div>
-                </div>
-                <div class="paperdoll-rail">${(['helmet', 'armor', 'boots'] as EquipSlot[]).map(equipmentSlot).join('')}</div>
-              </div>
-              <div class="paperdoll-acc">${(['necklace', 'ring', 'bracelet', 'belt'] as EquipSlot[]).map(equipmentSlot).join('')}</div>
-              <div class="paperdoll-stats">
-                <div><small>Saldırı</small><b>${p.atk}</b></div>
-                <div><small>Savunma</small><b>${p.def}</b></div>
-                <div><small>Kritik</small><b>%${p.crit.toFixed(0)}</b></div>
-              </div>
-            </section>
-            <section class="inventory-bag">
-              <div class="inventory-section-title"><span>Envanter</span><span><button class="inventory-sort" data-inv-sort title="Eşyaları tür ve enderliğe göre düzenle">⇅ Sırala</button>30 göz · ${this.inventoryPage + 1}/${INVENTORY_PAGE_COUNT}</span></div>
-              <nav class="inventory-pages" aria-label="Envanter sayfaları">
-                ${Array.from({ length: INVENTORY_PAGE_COUNT }, (_, page) => {
-                  const locked = page >= INVENTORY_OPEN_PAGES;
-                  return `<button class="inventory-page ${page === this.inventoryPage ? 'active' : ''} ${locked ? 'locked' : ''}" data-inv-page="${page}" ${locked ? 'disabled aria-label="Sayfa ' + (page + 1) + ', kilitli"' : 'aria-label="Sayfa ' + (page + 1) + '"'}>
-                    ${locked ? '<span class="page-lock" aria-hidden="true"></span>' : ''}<b>${page + 1}</b>
-                  </button>`;
-                }).join('')}
-              </nav>
-              <div class="inventory-grid">${Array.from({ length: INVENTORY_PAGE_SIZE }, (_, i) => this.invCell(pageStart + i)).join('')}</div>
-            </section>
-          </div>
-          <footer class="inventory-footer">
-            <span class="gold">${icon('coin', '#f0c040')}${p.gold.toLocaleString('tr-TR')} Akçe</span>
-            <small>${mode} · Eşyayı çubuğa da sürükleyebilirsin</small>
-          </footer>`;
-        body.querySelector<HTMLElement>('[data-inventory-name]')!.textContent = p.name;
-        this.characterPreview ??= new CharacterPreview();
-        this.characterPreview.mount(body.querySelector<HTMLElement>('.paperdoll-canvas-host')!, p);
-        break;
-      }
-      case 'char': {
-        const need = p.expNeed;
-        const RANKS: [number, string][] = [[40, 'Efsane'], [30, 'Kahraman'], [20, 'Şövalye'], [10, 'Savaşçı'], [1, 'Çaylak']];
-        const rank = RANKS.find(([lvl]) => p.level >= lvl)![1];
-        const SKILL_TYPES: Record<string, string> = { aoe: 'Alan Hasarı', strike: 'Tek Vuruş', dash: 'Atılma', buff: 'Güçlendirme', projectile: 'Mermi', targetAoe: 'Bölge Büyüsü' };
-        const statEffect: Record<StatKey, string> = {
-          str: `+${(p.stats.str * 2.2).toFixed(0)} saldırı`,
-          dex: `+%${(p.stats.dex * 0.35).toFixed(1)} kritik · +%${(p.stats.dex * 0.6).toFixed(0)} saldırı hızı${p.cls.mainStat === 'dex' ? ` · +${(p.stats.dex * 2.2).toFixed(0)} saldırı` : ''}`,
-          vit: `+${p.stats.vit * 20} can · +${(p.stats.vit * 0.7).toFixed(0)} savunma`,
-          int: `+${p.stats.int * 10} mana${p.cls.mainStat === 'int' ? ` · +${(p.stats.int * 2.2).toFixed(0)} saldırı` : ''}`,
-        };
-        const tabs: [string, string][] = [['stats', 'Nitelikler'], ['skills', 'Yetenekler'], ['combat', 'Savaş Özeti']];
-        let content = '';
-        if (this.charTab === 'stats') {
-          content = `
-            <div class="points ${p.statPoints > 0 ? 'has' : ''}">Dağıtılabilir nitelik puanı: <b>${p.statPoints}</b><small>Her seviye +3 puan</small></div>
-            <div class="stats">${(Object.keys(STAT_NAMES) as StatKey[]).map((k) => `
-              <div class="stat" title="${STAT_NAMES[k][1]}"><span>${STAT_NAMES[k][0]}${p.cls.mainStat === k ? ' ★' : ''}<small class="stat-fx">${statEffect[k]}</small></span><b>${p.stats[k]}</b>
-              <button class="plus" data-stat="${k}" ${p.statPoints > 0 ? '' : 'disabled'}>+</button></div>`).join('')}</div>
-            <div class="derived">
-              <div><span>Can</span><b>${Math.ceil(p.hp)} / ${p.maxHp}</b></div>
-              <div><span>Mana</span><b>${Math.floor(p.mp)} / ${p.maxMp}</b></div>
-              <div><span>Saldırı Gücü</span><b>${p.atk}</b></div>
-              <div><span>Savunma</span><b>${p.def}</b></div>
-              <div><span>Kritik Şansı</span><b>%${p.crit.toFixed(1)}</b></div>
-              <div><span>Saldırı Hızı</span><b>%${Math.round(p.atkSpeed * 100)}</b></div>
-              <div><span>Hareket Hızı</span><b>${p.moveSpeed.toFixed(1)}</b></div>
-            </div>`;
-        } else if (this.charTab === 'skills') {
-          content = `<div class="skill-list">${p.skills.map((sk, i) => {
-            const locked = p.level < sk.level;
-            const active = p.buffs.find((b) => b.id === sk.id);
-            const extras = [
-              sk.mult ? `Güç %${Math.round(sk.mult * 100)}` : '',
-              sk.radius ? `Alan ${sk.radius} m` : '',
-              sk.stun ? `Sersemletme ${sk.stun} sn` : '',
-              sk.slow ? `Yavaşlatma ${sk.slow} sn` : '',
-              sk.buff ? `Süre ${sk.buff.dur} sn` : '',
-            ].filter(Boolean).join(' · ');
-            return `<div class="sk ${locked ? 'locked' : ''} ${active ? 'active' : ''}" draggable="true" data-skill-idx="${i}" title="Kısayol çubuğuna sürükle"><i>${icon(sk.icon)}</i><div>
-              <b>[${i + 1}] ${sk.name}</b><em class="sk-type">${SKILL_TYPES[sk.type] ?? sk.type}</em>
-              <small>${locked ? `Seviye ${sk.level}'de açılır · ` : ''}${sk.mp} mana · ${sk.cd} sn bekleme</small>
-              ${extras ? `<small class="sk-fx">${extras}</small>` : ''}
-              ${active ? `<small class="sk-on">Etkin · ${active.t.toFixed(0)} sn kaldı</small>` : ''}
-              <p>${sk.desc}</p></div></div>`;
-          }).join('')}</div>`;
-        } else {
-          const eq = { atk: 0, def: 0, hp: 0, mp: 0, crit: 0, speed: 0 };
-          for (const slot of EQUIP_SLOTS) {
-            const s = p.equip[slot];
-            if (!s) continue;
-            const d = ITEMS[s.id], m = plusMult(s.plus);
-            eq.atk += (d.atk ?? 0) * m; eq.def += (d.def ?? 0) * m;
-            eq.hp += (d.hp ?? 0) * m; eq.mp += (d.mp ?? 0) * m;
-            eq.crit += d.crit ?? 0; eq.speed += d.speed ?? 0;
-          }
-          const bonus = p.buffs.length ? `<h4>Etkin Güçlendirmeler</h4><div class="buff-list">${p.buffs.map((b) => {
-            const def = SKILLS[b.id];
-            return `<div class="buff"><b>${def?.name ?? b.id}</b><small>${[
-              b.def.atk ? `+%${Math.round(b.def.atk * 100)} saldırı` : '',
-              b.def.def ? `+%${Math.round(b.def.def * 100)} savunma` : '',
-              b.def.speed ? `+%${Math.round(b.def.speed * 100)} hız` : '',
-              b.def.crit ? `+%${b.def.crit} kritik` : '',
-            ].filter(Boolean).join(' · ')} — ${b.t.toFixed(0)} sn kaldı</small></div>`;
-          }).join('')}</div>` : `<p class="dim-note">Etkin güçlendirme yok.</p>`;
-          content = `
-            <h4>Ekipman Katkısı</h4>
-            <div class="derived">
-              <div><span>Saldırı Gücü</span><b>+${Math.round(eq.atk)}</b></div>
-              <div><span>Savunma</span><b>+${Math.round(eq.def)}</b></div>
-              <div><span>Can</span><b>+${Math.round(eq.hp)}</b></div>
-              <div><span>Mana</span><b>+${Math.round(eq.mp)}</b></div>
-              <div><span>Kritik</span><b>+%${eq.crit.toFixed(0)}</b></div>
-              <div><span>Hız</span><b>+%${eq.speed.toFixed(0)}</b></div>
-            </div>
-            <h4>Savaş Değerleri</h4>
-            <div class="derived">
-              <div><span>Vuruş Hasarı</span><b>~${Math.round(p.atk * 0.88)}–${Math.round(p.atk * 1.12)}</b></div>
-              <div><span>Kritik Vuruş</span><b>~${Math.round(p.atk * 1.12 * 1.5)}+</b></div>
-              <div><span>Hasar Kesintisi</span><b>-${Math.round(p.def * 0.5)} / vuruş</b></div>
-              <div><span>Saldırı Menzili</span><b>${p.cls.range.toFixed(1)} m</b></div>
-              <div><span>Saniyedeki Vuruş</span><b>${(1 / (0.5 / p.atkSpeed)).toFixed(1)}</b></div>
-              <div><span>Silah Türü</span><b>${({ sword: 'Kılıç', dagger: 'Hançer', staff: 'Asa', spear: 'Mızrak', axe: 'Balta', club: 'Topuz', none: 'Yok' } as Record<string, string>)[p.cls.weapon] ?? p.cls.weapon}</b></div>
-            </div>
-            ${bonus}
-            <h4>Kaynaklar</h4>
-            <div class="derived">
-              <div><span>Can İksiri</span><b>${p.potionCount('hp')}</b></div>
-              <div><span>Mana İksiri</span><b>${p.potionCount('mp')}</b></div>
-              <div><span>Akçe</span><b>${p.gold.toLocaleString('tr-TR')}</b></div>
-            </div>`;
-        }
-        body.innerHTML = `
-          <div class="char-head"><b data-character-name></b><span>${p.cls.name} · Seviye ${p.level} · <i class="rank">${rank}</i></span></div>
-          <div class="exp-bar"><i style="width:${Math.min(100, (p.exp / need) * 100).toFixed(1)}%"></i><span>${p.exp.toLocaleString('tr-TR')} / ${need.toLocaleString('tr-TR')} tecrübe</span></div>
-          <nav class="char-tabs">${tabs.map(([k, l]) => `<button data-char-tab="${k}" class="${this.charTab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
-          ${content}`;
-        body.querySelector<HTMLElement>('[data-character-name]')!.textContent = p.name;
-        break;
-      }
-      case 'shop': {
-        const stock = SHOPS[this.shopNpcId] ?? SHOP_STOCK;
-        const npc = NPCS.find((n) => n.id === this.shopNpcId);
-        const say = this.shopNpcId === 'weaponsmith'
-          ? '“Keskin çelik, usta işi! Kılıç mı, hançer mi, asa mı, yoksa mızrak mı? En iyileri yalnızca bende.”'
-          : this.shopNpcId === 'armorer'
-            ? '“Sağlam zırh hayat kurtarır. Gel, sana uygun bir zırh seçelim.”'
-            : this.shopNpcId === 'jeweler'
-              ? '“Parlayan her şey altın değildir ama bendekiler öyledir. Malzemelerini de Ruh Kristaline çevirebilirim.”'
-              : '“Hoş geldin yolcu! En iyi mallar bende. Çantandaki eşyaları sağ tıklayarak bana satabilirsin.”';
-        const titleEl = this.els.shop.querySelector('h3');
-        if (titleEl && npc) titleEl.textContent = npc.name;
-        const CATS: [string, string][] = [['all', 'Tümü'], ['weapon', 'Silah'], ['armor', 'Zırh'], ['jewel', 'Takı'], ['consum', 'İksir/Diğer']];
-        const catOf = (id: string) => {
-          const t = ITEMS[id].type;
-          return t === 'weapon' ? 'weapon' : ['armor', 'helmet', 'boots', 'shield'].includes(t) ? 'armor' : ['necklace', 'ring', 'earring', 'bracelet', 'belt'].includes(t) ? 'jewel' : 'consum';
-        };
-        const cats = CATS.filter(([k]) => k === 'all' || stock.some((id) => catOf(id) === k));
-        const list = stock.filter((id) => this.shopCat === 'all' || catOf(id) === this.shopCat);
-        const pageStart = this.inventoryPage * INVENTORY_PAGE_SIZE;
-        body.innerHTML = `<p class="npc-say">${say}</p>
-          <div class="shop-layout">
-            <section class="shop-stock">
-              <div class="shop-tabs">${cats.map(([k, l]) => `<button data-shop-cat="${k}" class="${this.shopCat === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-              <div class="shop-list">${list.map((id) => {
-                const d = ITEMS[id];
-                const usable = !d.cls || d.cls === p.cls.id;
-                return `<div class="row ${usable ? '' : 'dim'}">${this.slot({ id, plus: 0, count: 1 }, `data-tip="${id}"`)}
-                  <div class="nm"><b style="color:${RARITY_COLORS[d.rarity]}">${d.name}</b><small>${d.cls ? CLASSES[d.cls].name + ' · ' : ''}Sv. ${d.level}${ITEMS[id].stack ? ' · yığın' : ''}</small></div>
-                  <span class="price ${p.gold < d.price ? 'no' : ''}">${d.price.toLocaleString('tr-TR')}</span>
-                  <button data-buy="${id}">${d.stack ? 'Al <small>(⇧ x10)</small>' : 'Al'}</button></div>`;
-              }).join('') || '<i class="shop-empty">Bu kategoride mal yok.</i>'}</div>
-              ${this.shopNpcId === 'jeweler' ? `
-                <div class="inventory-section-title"><span>Değişim</span><span>Malzeme → Ruh Kristali</span></div>
-                <div class="shop-list exchange-list">${EXCHANGES.map((ex, i) => {
-                  const gd = ITEMS[ex.give.id], rd = ITEMS[ex.get.id];
-                  const have = p.countItem(ex.give.id);
-                  const ok = have >= ex.give.count;
-                  return `<div class="row ${ok ? '' : 'dim'}">
-                    <div class="nm"><b>${gd.name} ×${ex.give.count}</b><small>elinde: ${have} → ${rd.name} ×${ex.get.count}</small></div>
-                    <button data-exchange="${i}" ${ok ? '' : 'disabled'}>Değiştir</button></div>`;
-                }).join('')}</div>` : ''}
-            </section>
-            <section class="shop-sell">
-              <div class="inventory-section-title"><span>Satış</span><span>Çantandan sağ tıkla sat</span></div>
-              <nav class="inventory-pages">${Array.from({ length: INVENTORY_OPEN_PAGES }, (_, page) =>
-                `<button class="inventory-page ${page === this.inventoryPage ? 'active' : ''}" data-inv-page="${page}" aria-label="Sayfa ${page + 1}"><b>${page + 1}</b></button>`).join('')}</nav>
-              <div class="inventory-grid shop-inv">${Array.from({ length: INVENTORY_PAGE_SIZE }, (_, i) => this.invCell(pageStart + i)).join('')}</div>
-              <div class="shop-sell-actions">
-                <button data-sell-bulk="equip0" title="Sıradan (beyaz) ekipmanları toplu sat">Adi Eşyaları Sat</button>
-                <button data-sell-bulk="materials" title="Malzemeleri toplu sat (Ruh Kristali hariç)">Malzemeleri Sat</button>
-              </div>
-              <div class="shop-gold">${icon('coin', '#f0c040')}<b>${p.gold.toLocaleString('tr-TR')}</b> Akçe</div>
-            </section>
-          </div>`;
-        break;
-      }
-      case 'vault': {
-        const v = g.vault;
-        const vaultCell = (i: number) => {
-          const c = v.cells[i];
-          if (c && isLink(c)) return '';
-          const s = asStack(c);
-          const size = s ? itemSize(s.id) : 1;
-          const col = (i % INVENTORY_COLS) + 1;
-          const row = Math.floor((i % INVENTORY_PAGE_SIZE) / INVENTORY_COLS) + 1;
-          const style = `grid-column:${col};grid-row:${row} / span ${size}`;
-          const extra = size > 1 ? `multi s${size}` : '';
-          return this.slot(s, `data-vault="${i}" style="${style}" aria-label="Kasa gözü ${i + 1}"`, extra);
-        };
-        const pageStart = this.inventoryPage * INVENTORY_PAGE_SIZE;
-        body.innerHTML = `<p class="npc-say">“Eşyaların burada güvende. Sağ tıkla kasaya koy, kasadan sağ tıkla geri al. Kasan kayıtlıdır — oyuna döndüğünde aynen durur.”</p>
-          <div class="shop-layout">
-            <section class="shop-stock">
-              <div class="inventory-section-title"><span>Kasa</span><span>${v.usedCount} / 60 göz</span></div>
-              <div class="vault-grids">
-                ${[0, 1].map((pg) => `<div class="inventory-grid shop-inv">${Array.from({ length: INVENTORY_PAGE_SIZE }, (_, i) => vaultCell(pg * INVENTORY_PAGE_SIZE + i)).join('')}</div>`).join('')}
-              </div>
-            </section>
-            <section class="shop-sell">
-              <div class="inventory-section-title"><span>Çantan</span><span>Sağ tık: kasaya koy</span></div>
-              <nav class="inventory-pages">${Array.from({ length: INVENTORY_OPEN_PAGES }, (_, page) =>
-                `<button class="inventory-page ${page === this.inventoryPage ? 'active' : ''}" data-inv-page="${page}" aria-label="Sayfa ${page + 1}"><b>${page + 1}</b></button>`).join('')}</nav>
-              <div class="inventory-grid shop-inv">${Array.from({ length: INVENTORY_PAGE_SIZE }, (_, i) => this.invCell(pageStart + i)).join('')}</div>
-              <div class="shop-gold">${icon('coin', '#f0c040')}<b>${p.gold.toLocaleString('tr-TR')}</b> Akçe</div>
-            </section>
-          </div>`;
-        break;
-      }
-      case 'travel': {
-        body.innerHTML = `<p class="npc-say">“Diyarın yollarını avucumun içi gibi bilirim. Nereye gitmek istersin? Küçük bir ücret karşılığı seni güvenle götürürüm.”</p>
-          <div class="travel-list">${TRAVEL_SPOTS.map((s, i) => `
-            <div class="travel-row">
-              <div class="nm"><b>${s.name}</b><small>${s.desc}</small></div>
-              <span class="price ${p.gold < s.cost ? 'no' : ''}">${s.cost.toLocaleString('tr-TR')}</span>
-              <button data-travel="${i}" ${p.gold < s.cost ? 'disabled' : ''}>Git</button>
-            </div>`).join('')}
-          </div>
-          <p class="dim-note">Köy merkezine dönmek ücretsizdir — ölürsen köyde dirilirsin.</p>`;
-        break;
-      }
-      case 'inn': {
-        const FOODS = [
-          { id: 'innstew', cost: 120 },
-          { id: 'innroast', cost: 220 },
-          { id: 'inntea', cost: 180 },
-        ];
-        const healCost = Math.round(10 + p.level * 4);
-        const activeFood = p.buffs.find((b) => FOODS.some((f) => f.id === b.id));
-        body.innerHTML = `<p class="npc-say">“Hoş geldin yorgun savaşçı! Biraz dinlen, karnını doyur — dışarısı tehlikeli.”</p>
-          <div class="inn-box">
-            <div class="travel-row">
-              <div class="nm"><b>Dinlen ve Yıkan</b><small>Canını ve mananı tamamen yeniler</small></div>
-              <span class="price ${p.gold < healCost ? 'no' : ''}">${healCost.toLocaleString('tr-TR')}</span>
-              <button data-inn-heal ${p.gold < healCost || (p.hp >= p.maxHp && p.mp >= p.maxMp) ? 'disabled' : ''}>Dinlen</button>
-            </div>
-          </div>
-          <h4>Han Yemekleri</h4>
-          <div class="travel-list">${FOODS.map((f) => {
-            const sk = SKILLS[f.id];
-            const active = p.buffs.find((b) => b.id === f.id);
-            return `<div class="travel-row ${active ? 'active' : ''}">
-              <div class="nm"><b>${sk.name}</b><small>${sk.desc}${active ? ` — etkin, ${active.t.toFixed(0)} sn` : ''}</small></div>
-              <span class="price ${p.gold < f.cost ? 'no' : ''}">${f.cost.toLocaleString('tr-TR')}</span>
-              <button data-inn-food="${f.id}" data-cost="${f.cost}" ${p.gold < f.cost ? 'disabled' : ''}>${active ? 'Yenile' : 'Ye'}</button>
-            </div>`;
-          }).join('')}</div>
-          ${activeFood ? `<p class="dim-note">Yeni bir yemek mevcut etkiyi yeniler; aynı anda bir han yemeği etkili olur.</p>` : ''}`;
-        break;
-      }
-      case 'stable': {
-        const cur = p.horseDef;
-        body.innerHTML = `<p class="npc-say">“Ahhırım diyarın en iyi taylarıyla dolu. Bir at seç; bineğin hem yoldaşın hem de gururun olur. <kbd>R</kbd> ile istediğin an binip inebilirsin.”</p>
-          ${cur ? `<div class="stable-status">
-            <div class="nm"><b>${cur.name}</b><small>Hız bonusu: +%${Math.round((cur.speed - 1) * 100)}${p.mounted ? ' · şu an sırtındasın' : ''}</small></div>
-            <button class="${p.mounted ? 'danger' : 'primary'}" data-mount>${p.mounted ? 'İn' : 'Bin'} <small>(R)</small></button>
-          </div>` : '<p class="dim-note">Henüz bir atın yok. Aşağıdan bir binek satın al.</p>'}
-          <h4>Satılık Binekler</h4>
-          <div class="travel-list">${Object.values(HORSES).map((h) => {
-            const owned = p.horseId === h.id;
-            return `<div class="travel-row ${owned ? 'active' : ''}">
-              <div class="nm"><b>${h.name}</b><small>${h.desc} — +%${Math.round((h.speed - 1) * 100)} hız</small></div>
-              ${owned
-                ? '<span class="price">Sahipsin</span><button disabled>—</button>'
-                : `<span class="price ${p.gold < h.cost ? 'no' : ''}">${h.cost.toLocaleString('tr-TR')}</span>
-                   <button data-horse-buy="${h.id}" ${p.gold < h.cost ? 'disabled' : ''}>${p.horseId ? 'Değiştir' : 'Satın Al'}</button>`}
-            </div>`;
-          }).join('')}</div>
-          <p class="dim-note">Atın ölümsüzdür ve her yere girer; savaşta üstünden atlamazsın. Yeni at alınca eskisi yerine geçer.</p>`;
-        break;
-      }
-      case 'smith': {
-        const s = this.smithRef ? g.economy.resolve(this.smithRef) : null;
-        const info = this.smithRef ? g.economy.upgradeInfo(this.smithRef) : null;
-        const crystals = p.countItem('crystal');
-        body.innerHTML = `<p class="npc-say">“Örsüm sıcak, çekicim hazır. Envanterinden ya da üzerinden bir eşya seç; onu güçlendireyim. Ama unutma: başarısız olursa eşya bir kademe düşer.”</p>
-          <div class="smith-box">${this.slot(s, s ? `data-tip="${s.id}" data-plus="${s.plus}"` : '', 'big')}
-          <div class="smith-info">${!s ? '<i>Bir eşya seç (sol tık)</i>' : !info
-            ? `<b>${itemLabel(s)}</b><i>${isEquip(ITEMS[s.id]) ? `Bu eşya en üst seviyede (+${MAX_PLUS}).` : 'Bu eşya yükseltilemez.'}</i>`
-            : `<b>${itemLabel(s)} → +${s.plus + 1}</b>
-               <div>Başarı şansı: <b class="chance">%${info.chance}</b></div>
-               <div>Ücret: <b class="${p.gold < info.cost ? 'no' : ''}">${info.cost.toLocaleString('tr-TR')} Akçe</b></div>
-               ${info.crystal ? `<div>Gerekli: <b class="${crystals < 1 ? 'no' : ''}">1 Ruh Kristali</b> (elinde: ${crystals})</div>` : ''}`}
-          </div></div>
-          <button class="primary" data-upgrade ${info ? '' : 'disabled'}>Yükselt</button>`;
-        break;
-      }
-      case 'quest': {
-        const q = g.quests.current;
-        const chapter = q ? [...QUESTS].slice(0, g.quests.index + 1).reverse().find((x) => x.chapter)?.chapter : null;
-        const step = `<div class="qstep">${chapter ? `${chapter} · ` : ''}Görev ${Math.min(g.quests.index + 1, QUESTS.length)} / ${QUESTS.length}</div>`;
-        const goalText = q ? (q.kind === 'upgrade' ? `Bir eşyayı +${q.count} yap` : q.kind === 'level' ? `${q.count}. seviyeye ulaş` : q.kind === 'talk' ? `${q.targetName} ile konuş` : `${q.count} × ${q.targetName}`) : '';
-        const rewards = q ? `<div class="reward"><b>Ödül:</b> ${q.exp.toLocaleString('tr-TR')} tecrübe, ${q.gold.toLocaleString('tr-TR')} Akçe${(q.items ?? []).map((it) => `, ${ITEMS[it.id].name} x${it.count}`).join('')}</div>` : '';
-        if (!q) {
-          body.innerHTML = `<p class="npc-say">“Gorvak düştü, Gökdemir sustu — efsane artık sensin, kahraman! Diyar sana minnettar. Dilediğince keşfet, avlan, güçlen.”</p><div class="btns"><button data-close="quest">Kapat</button></div>`;
-        } else if (!g.quests.accepted) {
-          const chapterHdr = q.chapter ? `<div class="quest-chapter">— ${q.chapter} —</div>` : '';
-          body.innerHTML = `${step}${chapterHdr}<h4>${q.title}</h4><p class="npc-say">“${q.text}”</p>
-            <div class="reward"><b>Hedef:</b> ${goalText}</div>${rewards}
-            <div class="btns"><button class="primary" data-quest="accept">Kabul Et</button><button data-close="quest">Sonra</button></div>`;
-        } else if (g.quests.complete) {
-          body.innerHTML = `${step}<h4>${q.title}</h4><p class="npc-say">“${q.done}”</p>${rewards}<div class="btns">
-            <button data-quest-route="walk" title="Bilge Aksakal'a otomatik yürü"><i class="btn-ic">${icon('route')}</i> Rota</button>
-            <button data-quest-route="trail" title="Yerde iz işaretleri göster"><i class="btn-ic">${icon('trail')}</i> İz</button>
-            <button data-quest-route="auto" title="Görev zincirini otomatik yürüt"><i class="btn-ic">${icon('sword')}</i> Oto</button>
-            <button class="primary" data-quest="turnin">Ödülü Al</button></div>`;
-        } else {
-          const now = g.quests.progressNow();
-          const pct = Math.round((now / q.count) * 100);
-          body.innerHTML = `${step}<h4>${q.title}</h4><p class="npc-say">“${q.text}”</p>
-            <div class="reward"><b>İlerleme:</b> ${now} / ${q.count}</div>
-            <div class="qbar"><i style="width:${pct}%"></i></div>${rewards}
-            <div class="btns">
-            <button data-quest-route="walk" title="Görev hedefine otomatik yürü"><i class="btn-ic">${icon('route')}</i> Rota</button>
-            <button data-quest-route="trail" title="Yerde iz işaretleri göster"><i class="btn-ic">${icon('trail')}</i> İz</button>
-            <button data-quest-route="auto" title="Görev zincirini otomatik yürüt: hedefe git, savaş, teslim et"><i class="btn-ic">${icon('sword')}</i> Oto</button>
-            <button data-close="quest">Tamam</button></div>`;
-        }
-        break;
-      }
-      case 'settings': {
-        const qs: [Quality, string][] = [['low', 'Düşük'], ['medium', 'Orta'], ['high', 'Yüksek'], ['ultra', 'Ultra']];
-        const dayModes: [DayNightMode, string][] = [['cycle', 'Döngü'], ['day', 'Gündüz sabit'], ['night', 'Gece sabit']];
-        const dayModeHelp: Record<DayNightMode, string> = {
-          cycle: 'Oyun saati akarak gündüz ve geceyi değiştirir.',
-          day: 'Dünya sürekli 12:00 gündüzünde kalır.',
-          night: 'Dünya sürekli 00:00 gecesinde kalır.',
-        };
-        body.innerHTML = `
-          <h4>Grafik Kalitesi</h4>
-          <div class="seg">${qs.map(([k, l]) => `<button data-quality="${k}" class="${g.pipeline.quality === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-          <h4>Dünya Zamanı</h4>
-          <div class="seg day-night-options">${dayModes.map(([mode, label]) => `<button data-day-night="${mode}" class="${g.dayNightMode === mode ? 'on' : ''}">${label}</button>`).join('')}</div>
-          <p class="day-night-help">${dayModeHelp[g.dayNightMode]}</p>
-          <h4>Ses</h4>
-          <div class="seg"><button data-mute="0" class="${g.audio.muted ? '' : 'on'}">Açık</button><button data-mute="1" class="${g.audio.muted ? 'on' : ''}">Kapalı</button></div>
-          <h4>Görev İzi</h4>
-          <div class="seg"><button data-autotrail="1" class="${g.autoTrail ? 'on' : ''}">Otomatik Açık</button><button data-autotrail="0" class="${g.autoTrail ? '' : 'on'}">Kapalı</button></div>
-          <p class="day-night-help">Görev hedefine giden yolu her zaman yerde işaretler. Takip alanındaki İz düğmesiyle geçerli görev için kapatabilirsin.</p>
-          <h4>Kontroller</h4>
-          <div class="keys">
-            <div><kbd>W A S D</kbd> Hareket</div><div><kbd>Shift</kbd> Koş</div>
-            <div><kbd>Boşluk</kbd> Saldır</div><div><kbd>1–4</kbd> Alt kısayol sırası</div>
-            <div><kbd>F1–F4</kbd> Üst kısayol sırası</div><div><kbd>Z</kbd> Ganimeti topla</div>
-            <div><kbd>H</kbd> Oto avı aç/kapat</div><div>Oto av çubuğundaki ⚙ gelişmiş ayarlar</div>
-            <div><kbd>E</kbd> Konuş</div><div><kbd>Tab</kbd> Hedef değiştir</div>
-            <div><kbd>R</kbd> Ata bin / in</div>
-            <div><kbd>Sol tık</kbd> Hedef seç / yürü</div><div><kbd>Sürükle</kbd> Kamerayı döndür</div>
-            <div><kbd>Tekerlek</kbd> Yakınlaştır</div><div><kbd>I</kbd> <kbd>C</kbd> <kbd>J</kbd> Pencereler</div>
-            <div><kbd>M</kbd> / <kbd>B</kbd> Dünya haritası</div><div><kbd>N</kbd> Sessiz</div>
-            <div><kbd>+</kbd> / <kbd>−</kbd> Mini haritada yakınlaştır</div><div><kbd>Esc</kbd> Kapat / ayarlar</div>
-          </div>
-          <div class="btns"><button class="primary" data-save>Oyunu Kaydet</button><button class="danger" data-reset>Karakteri Sil</button></div>`;
-        break;
-      }
-      case 'autohunt': {
-        const auto = g.autoHunt;
-        const s = auto.settings;
-        const pctSelect = (key: keyof AutoHuntSettings, value: number) =>
-          `<select data-auto-setting="${key}"><option value="0" ${value === 0 ? 'selected' : ''}>Kapalı</option>${AUTO_HUNT_THRESHOLDS.map((o) => `<option value="${o}" ${o === value ? 'selected' : ''}>%${o} altında</option>`).join('')}</select>`;
-        const select = (key: keyof AutoHuntSettings, value: number, values: readonly number[]) =>
-          `<select data-auto-setting="${key}">${values.map((option) => `<option value="${option}" ${option === value ? 'selected' : ''}>${option}%</option>`).join('')}</select>`;
-        const radiusOptions = AUTO_HUNT_RADII.map((radius) =>
-          `<option value="${radius}" ${radius === s.radius ? 'selected' : ''}>${radius} m</option>`).join('');
-        const check = (key: keyof AutoHuntSettings, label: string, checked: boolean) => `
-          <label class="auto-check"><input type="checkbox" data-auto-setting="${key}" ${checked ? 'checked' : ''}><span>${label}</span></label>`;
-        const fmt = (n: number) => n.toLocaleString('tr-TR');
-        const mins = Math.floor(auto.elapsed() / 60), secs = Math.floor(auto.elapsed() % 60);
-        const st = auto.stats;
-        const statsRow = auto.enabled || st.kills || st.gold ? `
-          <div class="auto-stats">
-            <span>Kesilen <b>${st.kills}</b></span><span>Tecrübe <b>${fmt(st.exp)}</b></span>
-            <span>Akçe <b>${fmt(st.gold)}</b></span><span>Eşya <b>${st.items}</b></span>
-            <span>Süre <b>${mins}:${String(secs).padStart(2, '0')}</b></span>
-          </div>` : '';
-        body.innerHTML = `
-          <div class="auto-status-card">
-            <span class="auto-status-dot"></span>
-            <div><b data-auto-heading>${auto.enabled ? 'Oto av açık' : 'Oto av kapalı'}</b><small data-auto-status>${auto.status}</small></div>
-            <span class="auto-zone" data-auto-zone>${auto.enabled ? `${Math.round(auto.center.x)}, ${Math.round(auto.center.z)}` : 'Bölge seçilmedi'}</span>
-          </div>
-          ${statsRow}
-          <button class="${auto.enabled ? 'danger' : 'primary'} auto-main-toggle" data-auto-toggle data-auto-main-toggle>
-            ${auto.enabled ? 'Oto Avı Durdur' : 'Bulunduğum Bölgede Başlat'}
-          </button>
-          <p class="auto-note">Oto av, başlatıldığı noktanın çevresinde kalır; altın halka alanı gösterir. Manuel hareket ve saldırı önceliklidir; envantere sığmayan eşyalar yerde kalır. Kısayol: <kbd>H</kbd></p>
-          <h4>Av Alanı</h4>
-          <label class="auto-setting-row"><span>Alan yarıçapı</span><select data-auto-setting="radius">${radiusOptions}</select></label>
-          <label class="auto-setting-row"><span>Hedef önceliği</span><select data-auto-setting="priority">${AUTO_HUNT_PRIORITIES.map(([k, l]) => `<option value="${k}" ${k === s.priority ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-          <h4>Otomatik Davranışlar</h4>
-          <div class="auto-checks">
-            ${check('collectItems', 'Ganimetleri topla', s.collectItems)}
-            ${check('useSkills', 'Hazır yetenekleri kullan', s.useSkills)}
-            ${check('usePotions', 'Can ve mana iksiri kullan', s.usePotions)}
-            ${check('preferAggro', 'Önce saldıranları kes', s.preferAggro)}
-            ${check('attackBosses', 'Patron düşmanlara saldır', s.attackBosses)}
-            ${check('attackStones', 'Lanetli taşlara saldır', s.attackStones)}
-            ${check('autoRespawn', 'Ölünce dirilip ava dön', s.autoRespawn)}
-          </div>
-          <div class="auto-thresholds">
-            <label class="auto-setting-row"><span>Can iksiri eşiği</span>${select('hpThreshold', s.hpThreshold, AUTO_HUNT_THRESHOLDS)}</label>
-            <label class="auto-setting-row"><span>Mana iksiri eşiği</span>${select('mpThreshold', s.mpThreshold, AUTO_HUNT_THRESHOLDS)}</label>
-            <label class="auto-setting-row"><span>Dinlenme</span>${pctSelect('restBelow', s.restBelow)}</label>
-          </div>
-          <h4>Kullanılacak Yetenekler</h4>
-          <div class="auto-checks auto-skills">
-            ${p.skills.map((sk, i) => `
-              <label class="auto-check ${p.level < sk.level ? 'dim' : ''}"><input type="checkbox" data-auto-skill="${i}" ${s.skillMask[i] && p.level >= sk.level ? 'checked' : ''} ${p.level < sk.level ? 'disabled' : ''}>
-              <span>[${i + 1}] ${sk.name}</span></label>`).join('')}
-          </div>`;
-        break;
-      }
+      case 'inv': renderInventory(this, body); break;
+      case 'vault': renderVault(this, body); break;
+      case 'char': renderCharacter(this, body); break;
+      case 'shop': renderShop(this, body); break;
+      case 'travel': renderTravel(this, body); break;
+      case 'inn': renderInn(this, body); break;
+      case 'stable': renderStable(this, body); break;
+      case 'smith': renderSmith(this, body); break;
+      case 'quest': renderQuest(this, body); break;
+      case 'settings': renderSettings(this, body); break;
+      case 'autohunt': renderAutoHunt(this, body); break;
     }
   }
 
@@ -809,11 +381,14 @@ export class Windows {
       else if (d.quality) { g.setQuality(d.quality as Quality); this.render('settings'); }
       else if (d.dayNight) { g.setDayNightMode(d.dayNight as DayNightMode); this.render('settings'); }
       else if (d.autoToggle !== undefined) { g.autoHunt.toggle(p); this.render('autohunt'); }
-      else if (d.mute) {
-        g.audio.setMuted(d.mute === '1');
-        SaveSystem.saveSettings({ quality: g.pipeline.quality, muted: g.audio.muted, dayNight: g.dayNightMode, autoTrail: g.autoTrail });
-        this.render('settings');
-      }
+      else if (d.mute) { g.setMuted(d.mute === '1'); this.render('settings'); }
+      else if (d.settingsTab) { this.settingsTab = d.settingsTab as SettingsTab; g.audio.click(); this.render('settings'); }
+      else if (d.openWin) { this.show(d.openWin as WinName); }
+      else if (d.showFps !== undefined) { g.setShowFps(d.showFps === '1'); this.render('settings'); }
+      else if (d.resetSettings !== undefined) { g.resetSettings(); this.render('settings'); }
+      else if (d.reduceFlash !== undefined) { g.setReduceFlash(d.reduceFlash === '1'); this.render('settings'); }
+      else if (d.largeText !== undefined) { g.setLargeText(d.largeText === '1'); this.render('settings'); }
+      else if (d.reduceShake !== undefined) { g.setReduceShake(d.reduceShake === '1'); this.render('settings'); }
       else if (d.autotrail !== undefined) { g.setAutoTrail(d.autotrail === '1'); this.render('settings'); }
       else if (d.save !== undefined) { g.saveNow(); g.events.emit('log', { msg: 'Oyun kaydedildi.', cls: 'good' }); }
       else if (d.reset !== undefined) {
@@ -848,6 +423,10 @@ export class Windows {
       this.game.audio.click();
       return;
     }
+    const sens = t.closest('[data-sensitivity]') as HTMLInputElement | null;
+    if (sens) { this.game.setSensitivity(Number(sens.value) / 100); this.render('settings'); return; }
+    const volume = t.closest('[data-volume]') as HTMLInputElement | null;
+    if (volume) { this.game.setVolume(Number(volume.value) / 100); this.render('settings'); return; }
     const field = t.closest('[data-auto-setting]') as HTMLInputElement | HTMLSelectElement | null;
     if (!field) return;
     const key = field.dataset.autoSetting as keyof AutoHuntSettings | undefined;
@@ -907,7 +486,6 @@ export class Windows {
       ${line('Saldırı Gücü', d.atk)}${line('Savunma', d.def)}${line('Can', d.hp)}${line('Mana', d.mp)}${line('Kritik', d.crit, false, '%')}${line('Hareket Hızı', d.speed, false, '%')}
       ${d.desc ? `<p>${d.desc}</p>` : ''}
       ${isEquip(d) ? `<div${bad(d.level > p.level)}>Gereken seviye: ${d.level}</div>` : ''}
-      ${d.cls ? `<div${bad(d.cls !== p.cls.id)}>Sınıf: ${CLASSES[d.cls].name}</div>` : ''}
       <div class="val">Değer: ${d.price.toLocaleString('tr-TR')} Akçe</div>
       ${hint ? `<div class="hint">${hint}</div>` : ''}`;
     this.tooltip.style.display = 'block';

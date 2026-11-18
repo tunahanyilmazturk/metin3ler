@@ -6,8 +6,6 @@ type Material = THREE.MeshStandardMaterial;
 
 const STYLES = {
   warrior: { fabric: 0x722e2a, trim: 0xc99b55, lining: 0x392522 },
-  assassin: { fabric: 0x344355, trim: 0x9faac6, lining: 0x232938 },
-  mage: { fabric: 0x4d3b79, trim: 0xc4a571, lining: 0x2e2649 },
 } satisfies Record<ClassId, { fabric: number; trim: number; lining: number }>;
 
 function plate(points: [number, number][], depth: number, material: Material, parent: THREE.Group, x = 0, y = 0, z = 0) {
@@ -40,25 +38,16 @@ export class PlayerOutfit {
     if (this.style === 'warrior') {
       plate([[-0.14, 0.1], [0, 0.14], [0.14, 0.1], [0.12, -0.08], [0, -0.15], [-0.12, -0.08]], 0.022, this.armor, emblem);
       plate([[-0.042, 0.025], [0, 0.076], [0.042, 0.025], [0, -0.047]], 0.013, this.trim, emblem, 0, 0.012, 0.028);
-    } else if (this.style === 'assassin') {
-      const strap = part(new THREE.BoxGeometry(0.058, 0.34, 0.017), this.lining, emblem, 0, -0.025, 0.007);
-      strap.rotation.z = -0.67;
-      part(new THREE.BoxGeometry(0.058, 0.046, 0.018), this.trim, emblem, 0.045, 0.03, 0.024).rotation.z = -0.67;
-    } else {
-      for (const side of [-1, 1]) {
-        part(new THREE.BoxGeometry(0.024, 0.28, 0.025), this.trim, emblem, side * 0.077, -0.015, 0).rotation.z = -side * 0.35;
-      }
-      part(new THREE.OctahedronGeometry(0.042), this.trim, emblem, 0, 0.07, 0.026).scale.z = 0.48;
     }
 
-    const length = this.style === 'mage' ? 0.65 : this.style === 'warrior' ? 0.48 : 0.34;
-    const width = this.style === 'warrior' ? 0.33 : 0.28;
-    const cape = joint(spine, this.style === 'assassin' ? 0.084 : 0, 0.49, -0.145 * bulk);
+    const length = 0.48;
+    const width = 0.33;
+    const cape = joint(spine, 0, 0.49, -0.145 * bulk);
     plate([[-width / 2, 0], [width / 2, 0], [width * 0.58, -length * 0.86], [0, -length], [-width * 0.58, -length * 0.86]], 0.013, this.fabric, cape);
     plate([[-0.017, -0.055], [0.017, -0.055], [0.017, -length * 0.77], [0, -length * 0.88], [-0.017, -length * 0.77]], 0.006, this.trim, cape, 0, 0, -0.008);
     this.panels.push(cape);
 
-    const hem = this.style === 'mage' ? 0.53 : 0.25;
+    const hem = 0.25;
     const tabard = joint(hips, 0, 0.065, 0.162 * bulk);
     plate([[-0.089, 0], [0.089, 0], [0.073, -hem * 0.88], [0, -hem], [-0.073, -hem * 0.88]], 0.012, this.fabric, tabard);
     plate([[-0.012, -0.036], [0.012, -0.036], [0.012, -hem * 0.78], [0, -hem * 0.89], [-0.012, -hem * 0.78]], 0.006, this.trim, tabard, 0, 0, 0.016);
@@ -66,8 +55,7 @@ export class PlayerOutfit {
   }
 
   addShoulder(arm: THREE.Group, side: number) {
-    if (this.style === 'assassin' && side === -1) return;
-    const size = this.style === 'warrior' ? 1 : this.style === 'assassin' ? 0.72 : 0.63;
+    const size = 1;
     for (let layer = 0; layer < 2; layer++) {
       const guard = part(new THREE.SphereGeometry(0.135, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.65),
         layer === 0 ? this.trim : this.armor, arm, side * (0.03 + layer * 0.014), 0.043 - layer * 0.063, 0);
@@ -84,15 +72,6 @@ export class PlayerOutfit {
       return;
     }
 
-    const hood = part(new THREE.SphereGeometry(0.147, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.68), this.fabric, head, 0, 0.184, -0.027);
-    hood.rotation.x = -Math.PI / 2;
-    hood.scale.set(1, 1, this.style === 'mage' ? 1.28 : 1.13);
-    const edge = part(new THREE.TorusGeometry(0.122, 0.009, 5, 20), this.trim, head, 0, 0.184, 0.052);
-    edge.scale.y = hood.scale.z;
-    if (this.style === 'assassin') {
-      const mask = part(new THREE.SphereGeometry(0.103, 12, 8), this.lining, head, 0, 0.112, 0.033);
-      mask.scale.set(1, 0.43, 0.87);
-    }
   }
 
   update(time: number, motion: number, turning: number, riding: boolean) {

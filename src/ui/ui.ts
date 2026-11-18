@@ -1,5 +1,5 @@
 import { clamp } from '../core/utils';
-import { CLASSES, ClassId } from '../data/classes';
+import { CLASSES, DEFAULT_CLASS } from '../data/classes';
 import { ITEMS, RARITY_COLORS } from '../data/items';
 import { anchorOf, asStack } from '../data/inventory';
 import { SKILLS } from '../data/skills';
@@ -13,41 +13,34 @@ import { Overlay } from './overlay';
 import { Windows } from './windows';
 import { WorldMap } from './worldmap';
 
-const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
-
-/** Metin değişmediyse DOM'a dokunmaz. */
-function setText(el: HTMLElement, text: string) {
-  if ((el as any)._t !== text) { (el as any)._t = text; el.textContent = text; }
-}
-function setWidth(el: HTMLElement, frac: number) {
-  const w = `${(Math.max(0, Math.min(1, frac)) * 100).toFixed(1)}%`;
-  if ((el as any)._w !== w) { (el as any)._w = w; el.style.width = w; }
-}
+import { $, setText, setWidth } from './uiDom';
+import { bindBar, bindTouch } from './uiBindings';
+import { syncHotbarSlot, showTutorial, renderTutorial, finishTutorial, syncAutoHuntButton } from './uiHud';
 
 /** Arayüz kökü: başlangıç ekranı, HUD, kayıt günlüğü ve pencere yönetimi. */
 export class UI {
-  private root = $('#ui');
-  private start!: HTMLElement;
-  private hud!: HTMLElement;
-  private death!: HTMLElement;
-  private logEl!: HTMLElement;
-  private windows!: Windows;
-  private overlay!: Overlay;
-  private minimap!: Minimap;
-  private worldmap!: WorldMap;
-  private el: Record<string, HTMLElement> = {};
-  private hbEls: { root: HTMLElement; ic: HTMLElement; cd: HTMLElement; cdt: HTMLElement; cnt: HTMLElement }[] = [];
-  private hurt = 0;
-  private slow = 0;
-  private tutorialStep = 0;
-  private readonly tutorialSteps = [
+  root = $('#ui');
+  start!: HTMLElement;
+  hud!: HTMLElement;
+  death!: HTMLElement;
+  logEl!: HTMLElement;
+  windows!: Windows;
+  overlay!: Overlay;
+  minimap!: Minimap;
+  worldmap!: WorldMap;
+  el: Record<string, HTMLElement> = {};
+  hbEls: { root: HTMLElement; ic: HTMLElement; cd: HTMLElement; cdt: HTMLElement; cnt: HTMLElement }[] = [];
+  hurt = 0;
+  slow = 0;
+  tutorialStep = 0;
+  readonly tutorialSteps = [
     { title: 'Diyarı keşfet', text: 'WASD ile yürü, Shift ile hızlan. Zemine tıklayarak da gideceğin yeri seçebilirsin. Dokunmatik ekranda sol çubuğu kullan.' },
     { title: 'Hedef al ve savaş', text: 'Bir düşmana tıklayarak hedef seç; Tab ile yakındaki hedefler arasında geçiş yap. Boşluk ile saldır veya dokunmatik ekrandaki Saldır düğmesine bas.' },
     { title: 'Yeteneklerini kullan', text: '1–4 tuşları alt sırayı, F1–F4 üst sırayı kullanır. Eşya ve yetenekleri çubuğa sürükleyip dizebilir, sağ tıkla çıkarabilirsin. Yetenekler mana harcar ve bekleme süresine sahiptir.' },
     { title: 'İlk görevini al', text: 'Köyde Bilge Aksakal’a yaklaş ve E’ye bas. Görevi kabul et; hedefin ekranın sol üstündeki takip alanında görünür. Oradaki Rota düğmesi seni hedefe yürütür, İz düğmesi yere iz işaretleri koyar. İlerlemen tarayıcına kaydedilir.' },
   ];
 
-  constructor(private game: Game) {
+  constructor(readonly game: Game) {
     this.root.insertAdjacentHTML('beforeend', `
       <div id="overlay"></div>
       <div id="hud" class="hidden">
@@ -146,7 +139,7 @@ export class UI {
     ev.on('playerRespawned', () => this.death.classList.add('hidden'));
     ev.on('levelUp', (lvl: number) => this.banner(`SEVİYE ${lvl}`));
     ev.on('changed', () => { this.slow = 0; });
-    ev.on('autoHuntChanged', () => this.syncAutoHuntButton());
+    ev.on('autoHuntChanged', () => syncAutoHuntButton(this));
 
     $('#respawn').addEventListener('click', () => {
       this.death.classList.add('hidden');
@@ -156,11 +149,11 @@ export class UI {
       const action = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tutorial]')?.dataset.tutorial;
       if (!action) return;
       if (action === 'skip') {
-        this.finishTutorial();
+        finishTutorial(this);
       } else if (action === 'next') {
         this.tutorialStep++;
-        if (this.tutorialStep >= this.tutorialSteps.length) this.finishTutorial();
-        else this.renderTutorial();
+        if (this.tutorialStep >= this.tutorialSteps.length) finishTutorial(this);
+        else renderTutorial(this);
       }
     });
     $('.menu-btns', this.hud).addEventListener('click', (e) => {
@@ -173,9 +166,9 @@ export class UI {
       const m = b?.dataset.questRoute;
       if (game.started && (m === 'walk' || m === 'trail' || m === 'auto')) game.questNav.toggle(m);
     });
-    this.bindBar($('#hotbar'));
-    this.bindBar($('#hotbar2'));
-    this.bindTouch();
+    bindBar(this, $('#hotbar'));
+    bindBar(this, $('#hotbar2'));
+    bindTouch(this);
     // Yüzen F çubuğunun kayıtlı konumu/döşeni (varsa) geri yüklenir.
     try {
       const raw = localStorage.getItem('gokdemir-bar2-v1');
@@ -194,166 +187,18 @@ export class UI {
   }
 
   /** Kısayol çubuğu kabı için tık, sağ-tık temizleme ve sürükle-bırak bağlar. */
-  private bindBar(hb: HTMLElement) {
-    const game = this.game;
-    hb.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('[data-auto-settings]')) {
-        this.windows.toggle('autohunt');
-        return;
-      }
-      if (target.closest('[data-auto-toggle]')) {
-        game.autoHunt.toggle(game.player);
-        return;
-      }
-      const s = target.closest('[data-hb]') as HTMLElement | null;
-      if (s && game.started) game.player.useHotbar(Number(s.dataset.hb));
-    });
-    // Sağ tık: gözü boşalt.
-    hb.addEventListener('contextmenu', (e) => {
-      const s = (e.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
-      if (!s) return;
-      e.preventDefault();
-      if (game.player.hotbar[Number(s.dataset.hb)]) {
-        game.player.hotbar[Number(s.dataset.hb)] = null;
-        game.events.emit('changed');
-      }
-    });
-    // Sürükle-bırak: envanter eşyaları, karakter penceresindeki yetenekler ve çubuk içi taşıma.
-    const HB_ACCEPT = ['application/x-gokdemir-item', 'application/x-gokdemir-skill', 'application/x-gokdemir-hb'];
-    hb.addEventListener('dragstart', (e) => {
-      const de = e as DragEvent;
-      const s = (de.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
-      if (!s || !de.dataTransfer || !game.player.hotbar[Number(s.dataset.hb)]) { de.preventDefault(); return; }
-      de.dataTransfer.setData('application/x-gokdemir-hb', s.dataset.hb!);
-      de.dataTransfer.effectAllowed = 'move';
-      s.classList.add('dragging');
-    });
-    hb.addEventListener('dragover', (e) => {
-      const s = (e.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
-      if (!s || !HB_ACCEPT.some((t) => e.dataTransfer?.types.includes(t))) return;
-      e.preventDefault();
-      s.classList.add('drop-hover');
-    });
-    hb.addEventListener('dragleave', (e) => {
-      (e.target as HTMLElement).closest('[data-hb]')?.classList.remove('drop-hover');
-    });
-    hb.addEventListener('dragend', () => hb.querySelectorAll('.dragging,.drop-hover').forEach((el) => el.classList.remove('dragging', 'drop-hover')));
-    hb.addEventListener('drop', (e) => {
-      const s = (e.target as HTMLElement).closest('[data-hb]') as HTMLElement | null;
-      if (!s || !e.dataTransfer) return;
-      e.preventDefault();
-      s.classList.remove('drop-hover');
-      const p = game.player;
-      const i = Number(s.dataset.hb);
-      const fromBar = e.dataTransfer.getData('application/x-gokdemir-hb');
-      if (fromBar !== '') {
-        const j = Number(fromBar);
-        [p.hotbar[i], p.hotbar[j]] = [p.hotbar[j], p.hotbar[i]];
-      } else {
-        let entry: HotbarEntry | null = null;
-        try {
-          const rawSkill = e.dataTransfer.getData('application/x-gokdemir-skill');
-          const rawItem = e.dataTransfer.getData('application/x-gokdemir-item');
-          if (rawSkill) {
-            const n = Number(JSON.parse(rawSkill));
-            if (Number.isInteger(n) && n >= 0 && n < p.skills.length) entry = { t: 'skill', i: n };
-          } else if (rawItem) {
-            const ref = JSON.parse(rawItem) as { inv?: number };
-            if (Number.isInteger(ref.inv) && (ref.inv as number) >= 0 && (ref.inv as number) < p.inv.length) {
-              const stack = asStack(p.inv[anchorOf(p.inv, ref.inv!)]);
-              if (stack) entry = { t: 'item', id: stack.id, plus: stack.plus };
-            }
-          }
-        } catch { return; }
-        if (!entry) return;
-        p.hotbar[i] = entry;
-      }
-      game.audio.click();
-      game.events.emit('changed');
-    });
-  }
-
-  /** Dokunmatik sanal çubuk, saldırı düğmesi ve mini harita etkileşimleri. */
-  private bindTouch() {
-    const game = this.game;
-    const stick = $('.touch-stick', this.hud);
-    const knob = $('.touch-knob', stick);
-    let stickPointer: number | null = null;
-    const moveStick = (e: PointerEvent) => {
-      const rect = stick.getBoundingClientRect();
-      const limit = rect.width * 0.28;
-      const dx = clamp(e.clientX - (rect.left + rect.width / 2), -limit, limit);
-      const dy = clamp(e.clientY - (rect.top + rect.height / 2), -limit, limit);
-      game.input.virtualMove.x = dx / limit;
-      game.input.virtualMove.y = dy / limit;
-      knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    };
-    const releaseStick = (e: PointerEvent) => {
-      if (e.pointerId !== stickPointer) return;
-      stickPointer = null;
-      game.input.virtualMove.x = 0;
-      game.input.virtualMove.y = 0;
-      knob.style.transform = '';
-    };
-    stick.addEventListener('pointerdown', (e) => {
-      if (stickPointer !== null) return;
-      e.preventDefault();
-      stickPointer = e.pointerId;
-      stick.setPointerCapture(e.pointerId);
-      moveStick(e);
-    });
-    stick.addEventListener('pointermove', (e) => {
-      if (e.pointerId === stickPointer) moveStick(e);
-    });
-    stick.addEventListener('pointerup', releaseStick);
-    stick.addEventListener('pointercancel', releaseStick);
-
-    const attack = $('.touch-attack', this.hud);
-    attack.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      game.input.virtualAttack = true;
-      attack.setPointerCapture(e.pointerId);
-    });
-    const releaseAttack = () => { game.input.virtualAttack = false; };
-    attack.addEventListener('pointerup', releaseAttack);
-    attack.addEventListener('pointercancel', releaseAttack);
-    attack.addEventListener('lostpointercapture', releaseAttack);
-
-    // Mini harita: +/- yakınlaştırma, tekerlek, büyük harita düğmesi.
-    // pointerdown'da durdur ki tıklamalar oyun tuvaline (yürüme/hedef) sızmasın.
-    const mmWrap = $('.mm-wrap', this.hud);
-    mmWrap.addEventListener('pointerdown', (e) => {
-      if ((e.target as HTMLElement).closest('button')) e.preventDefault();
-    });
-    mmWrap.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
-      if (!b || !this.minimap) return;
-      e.preventDefault();
-      if (b.classList.contains('mm-zoom')) this.minimap.zoomBy(b.dataset.zoom === 'in' ? -1 : 1);
-      else if (b.classList.contains('mm-expand')) this.worldmap?.toggle();
-    });
-    $('#minimap').addEventListener('wheel', (e) => {
-      e.preventDefault();
-      if (this.minimap) this.minimap.zoomBy(Math.sign((e as WheelEvent).deltaY));
-    }, { passive: false });
-  }
-
-  // ------------------------------------------------------------------ başlangıç
 
   showStart() {
     const save = SaveSystem.load();
-    let cls: ClassId = 'warrior';
+    const cls = DEFAULT_CLASS;
+    const hero = CLASSES[cls];
     this.start.innerHTML = `
       <div class="start-inner">
         <div class="title"><span>Kadim Taşların Gölgesinde</span><h1>GÖKDEMİR<br><em>EFSANESİ</em></h1></div>
         <div class="start-panel">
           <label for="char-name">Kahramanının adı</label>
           <input id="char-name" maxlength="16" placeholder="Bir isim yaz" autocomplete="off" />
-          <div class="classes">${(Object.values(CLASSES)).map((c) => `
-            <button class="class-card ${c.id === cls ? 'on' : ''}" data-cls="${c.id}">
-              <i>${icon(c.weapon === 'staff' ? 'staff' : c.weapon === 'dagger' ? 'dagger' : 'sword')}</i>
-              <b>${c.name}</b><small>${c.desc}</small></button>`).join('')}</div>
+          <div class="hero-card"><i>${icon('sword')}</i><div><b>${hero.name}</b><small>${hero.desc}</small></div></div>
           <div class="start-btns">
             <button class="primary" id="btn-new">Yeni Maceraya Başla</button>
             ${save ? '<button id="btn-continue"></button>' : ''}
@@ -363,18 +208,11 @@ export class UI {
       </div>`;
     $<HTMLInputElement>('#char-name', this.start).value = save?.player.name ?? '';
     if (save) {
-      const clsName = CLASSES[save.player.cls].name;
-      $('#btn-continue', this.start).textContent = `Devam Et — ${save.player.name} (Sv. ${save.player.level} ${clsName})`;
+      $('#btn-continue', this.start).textContent = `Devam Et — ${save.player.name} (Sv. ${save.player.level} ${hero.name})`;
     }
     this.start.classList.remove('hidden');
     this.start.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
-      const card = t.closest('.class-card') as HTMLElement | null;
-      if (card) {
-        cls = card.dataset.cls as ClassId;
-        this.start.querySelectorAll('.class-card').forEach((c) => c.classList.toggle('on', c === card));
-        return;
-      }
       if (t.id === 'btn-new') {
         const name = ($<HTMLInputElement>('#char-name').value.trim() || 'Yolcu').slice(0, 16);
         if (save && !confirm('Kayıtlı karakterin silinip yeni bir oyun başlatılacak. Emin misin?')) return;
@@ -445,12 +283,12 @@ export class UI {
       this.saveBar2();
     });
 
-    this.syncAutoHuntButton();
-    this.showTutorial();
+    syncAutoHuntButton(this);
+    showTutorial(this);
   }
 
   /** Yüzen F çubuğunun konumunu ve dikey/yatay durumunu kaydeder. */
-  private saveBar2() {
+  saveBar2() {
     try {
       const f = $('#hotbar2');
       const r = f.getBoundingClientRect();
@@ -460,75 +298,6 @@ export class UI {
     } catch { /* yoksay */ }
   }
 
-  /** Göz içeriğini yalnızca giriş değiştiğinde yeniden çizer. */
-  private syncHotbarSlot(i: number) {
-    const p = this.game.player;
-    const els = this.hbEls[i];
-    const e = p.hotbar[i];
-    const key = e ? JSON.stringify(e) : '';
-    if ((els.root as any)._k !== key) {
-      (els.root as any)._k = key;
-      els.root.classList.toggle('empty', !e);
-      els.root.draggable = !!e;
-      if (!e) {
-        els.ic.innerHTML = '';
-        els.root.title = 'Boş göz — envanterden eşya ya da yetenek sekmesinden yetenek sürükle';
-      } else if (e.t === 'skill') {
-        const sk = p.skills[e.i];
-        els.ic.innerHTML = icon(sk.icon);
-        els.root.title = `${sk.name} — ${sk.desc} (${sk.mp} mana, ${sk.cd} sn) · Sağ tık: çıkar`;
-      } else {
-        const d = ITEMS[e.id];
-        const color = d.icon === 'potion' ? '#ff5a4a' : d.icon === 'potionmp' ? '#4a9cff' : RARITY_COLORS[d.rarity];
-        els.ic.innerHTML = `${icon(d.icon, color)}${e.plus > 0 ? `<b class="hb-plus">+${e.plus}</b>` : ''}`;
-        els.root.title = `${d.name} · Sağ tık: çıkar`;
-      }
-    }
-    // Eşya gözü: envanterdeki toplam adet
-    if (e?.t === 'item') {
-      let n = 0;
-      for (let c = 0; c < p.inv.length; c++) {
-        const s = asStack(p.inv[c]);
-        if (s && s.id === e.id && s.plus === e.plus) n += s.count;
-      }
-      setText(els.cnt, n > 0 ? String(n) : '');
-      els.root.classList.toggle('missing', n === 0);
-    } else {
-      setText(els.cnt, '');
-      els.root.classList.remove('missing');
-    }
-  }
-
-  private showTutorial() {
-    try {
-      if (localStorage.getItem('gokdemir-tutorial-v1') === 'done') return;
-    } catch { /* Depolama kapalıysa bu oturumda rehberi göster. */ }
-    this.tutorialStep = 0;
-    this.renderTutorial();
-  }
-
-  private renderTutorial() {
-    const panel = $('#tutorial');
-    const step = this.tutorialSteps[this.tutorialStep];
-    panel.innerHTML = `<div class="tutorial-count">BAŞLANGIÇ REHBERİ · ${this.tutorialStep + 1} / ${this.tutorialSteps.length}</div>
-      <h3>${step.title}</h3><p>${step.text}</p><div class="tutorial-actions">
-      <button data-tutorial="skip">Rehberi atla</button><button class="primary" data-tutorial="next">${this.tutorialStep + 1 === this.tutorialSteps.length ? 'Bitir' : 'Devam'}</button></div>`;
-    panel.classList.remove('hidden');
-  }
-
-  private finishTutorial() {
-    $('#tutorial').classList.add('hidden');
-    try { localStorage.setItem('gokdemir-tutorial-v1', 'done'); } catch { /* Bu oturumda kapalı kalır. */ }
-  }
-
-  private syncAutoHuntButton() {
-    const button = $('#hotbar [data-auto-toggle]') as HTMLButtonElement | null;
-    if (!button) return;
-    const auto = this.game.autoHunt;
-    button.classList.toggle('active', auto.enabled);
-    button.setAttribute('aria-pressed', String(auto.enabled));
-    button.title = `Oto av: ${auto.enabled ? auto.status : 'kapalı'} (H)`;
-  }
 
   openNpc(npc: Npc) {
     const win = npc.id === 'elder' ? 'quest'
@@ -550,7 +319,7 @@ export class UI {
     setTimeout(() => d.classList.add('old'), 9000);
   }
 
-  private banner(text: string) {
+  banner(text: string) {
     const b = this.el.banner;
     b.textContent = text;
     b.classList.remove('show');
@@ -573,7 +342,7 @@ export class UI {
     if (inp.hit('KeyN')) g.audio.setMuted(!g.audio.muted);
     if (inp.hit('Escape')) {
       if (this.worldmap.isOpen) this.worldmap.close();
-      else if (!this.windows.closeTop()) { if (g.questNav.active) g.questNav.stop(); else this.windows.toggle('settings'); }
+      else if (!this.windows.closeTop()) this.windows.toggle('settings');
     }
 
     setText(this.el['p-level'], String(p.level));
@@ -593,7 +362,7 @@ export class UI {
     }
 
     for (let i = 0; i < this.hbEls.length; i++) {
-      this.syncHotbarSlot(i);
+      syncHotbarSlot(this, i);
       const s = this.hbEls[i];
       const e = p.hotbar[i];
       const si = e?.t === 'skill' ? e.i : -1;
