@@ -61,7 +61,8 @@ function isPlayerSave(value: unknown): value is PlayerSave {
   if (!isRecord(equip)) return false;
   return EQUIP_SLOTS.every((slot) => {
     const item = equip[slot];
-    return item === null || (isItemStack(item) && ITEMS[item.id].type === slot);
+    // Eski kayıtlarda yeni slot anahtarları hiç olmayabilir (undefined): boş sayılır.
+    return item == null || (isItemStack(item) && ITEMS[item.id].type === slot);
   });
 }
 

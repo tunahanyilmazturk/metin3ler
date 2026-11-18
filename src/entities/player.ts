@@ -53,7 +53,10 @@ export class Player {
   hp = 1;
   mp = 1;
   inv: InvCell[] = new Array(INV_SIZE).fill(null);
-  equip: Record<EquipSlot, ItemStack | null> = { weapon: null, armor: null, helmet: null, boots: null, necklace: null, ring: null };
+  equip: Record<EquipSlot, ItemStack | null> = {
+    weapon: null, shield: null, armor: null, helmet: null, boots: null,
+    necklace: null, ring: null, earring: null, bracelet: null, belt: null,
+  };
   alive = true;
   target: Enemy | null = null;
   intent: Intent = null;

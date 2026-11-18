@@ -99,8 +99,12 @@ kbd {
 .tf-name { text-align: center; font: 600 13px var(--display); color: #ffd9a0; margin-bottom: 4px; }
 
 .mm-wrap { position: absolute; top: 14px; right: 14px; width: 188px; }
-.mm-ring { width: 188px; height: 188px; border-radius: 50%; overflow: hidden; border: 2px solid var(--gold); box-shadow: 0 6px 20px #000a, inset 0 0 20px #000; background: #10141a; }
+.mm-ring { width: 188px; height: 188px; border-radius: 50%; overflow: hidden; border: 2px solid var(--gold); box-shadow: 0 6px 20px #000a, inset 0 0 20px #000; background: #10141a; pointer-events: auto; }
 .mm-ring canvas { width: 100%; height: 100%; display: block; }
+.mm-zooms { position: absolute; top: 9px; right: 11px; z-index: 2; display: flex; gap: 4px; }
+.mm-zoom, .mm-expand { width: 22px; height: 22px; padding: 0; border-radius: 50%; border-color: var(--gold-dim); background: #100c09b8; font: 700 14px/1 var(--body); color: #ffe9b0; display: grid; place-items: center; }
+.mm-expand { position: absolute; top: 9px; left: 11px; z-index: 2; font-size: 13px; color: var(--gold); }
+.mm-zoom:hover, .mm-expand:hover { border-color: var(--gold); }
 .mm-info { display: flex; justify-content: space-between; margin-top: 6px; padding: 3px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .mm-info span:first-child { color: var(--gold); }
 .tracker { position: static; width: 100%; padding: 8px 10px; background: linear-gradient(90deg, #000a, transparent); border-left: 2px solid var(--gold); text-align: left; text-shadow: 0 1px 3px #000; }
@@ -157,6 +161,9 @@ kbd {
   .portrait span { font-size: 16px; }
   .mm-wrap { top: 8px; right: 8px; width: 96px; }
   .mm-ring { width: 96px; height: 96px; }
+  .mm-zooms { top: 2px; right: 4px; gap: 2px; }
+  .mm-zoom, .mm-expand { width: 18px; height: 18px; font-size: 12px; }
+  .mm-expand { top: 2px; left: 4px; font-size: 11px; }
   .mm-info { font-size: 9px; padding: 2px 5px; }
   .tracker { padding: 5px 7px; }
   .target-frame { top: auto; bottom: calc(220px + env(safe-area-inset-bottom)); width: min(220px, 62vw); }
@@ -230,10 +237,10 @@ kbd {
 .win .x { padding: 2px 8px; background: none; border-color: transparent; color: var(--muted); }
 .win .body { padding: 14px; overflow-y: auto; min-height: 0; }
 .win-inv {
-  right: 16px; top: 50%; transform: translateY(-50%); width: min(640px, calc(100vw - 32px));
+  right: 16px; top: 50%; transform: translateY(-50%); width: min(680px, calc(100vw - 32px));
   height: min(520px, calc(100vh - 32px)); max-height: calc(100vh - 32px); min-height: 0; z-index: 2;
 }
-.win-inv.with-service { width: min(640px, calc(100vw - 440px)); }
+.win-inv.with-service { width: min(680px, calc(100vw - 440px)); }
 .win-char { left: 14px; top: 92px; width: 330px; }
 .win-shop { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 24px); z-index: 4; }
 .win-smith, .win-quest { left: 358px; top: 92px; width: 400px; }
@@ -274,8 +281,8 @@ kbd {
   .win-inv { height: min(520px, calc(100vh - 24px)); max-height: calc(100vh - 24px); }
 }
 @media (max-height: 480px) and (min-width: 801px) {
-  .inventory-grid { grid-template-columns: repeat(5, 34px); grid-template-rows: repeat(6, 34px); gap: 3px; }
-  .inventory-grid .slot { width: 34px; height: 34px; padding: 5px; }
+  .inventory-grid { grid-template-columns: repeat(5, minmax(28px, 1fr)); grid-template-rows: repeat(6, minmax(22px, 1fr)); gap: 3px; }
+  .inventory-grid .slot { padding: 5px; }
   .paperdoll-stage { min-height: 190px; max-height: 205px; }
   .paperdoll-stats { display: none; }
 }
@@ -283,6 +290,7 @@ kbd {
 .win-inv .body { display: flex; flex: 1; flex-direction: column; overflow: hidden; padding: 9px; }
 .inventory-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 9px; flex: 1; min-height: 0; }
 .inventory-paperdoll, .inventory-bag { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.inventory-bag { overflow-y: auto; }
 .inventory-section-title { display: flex; justify-content: space-between; align-items: center; min-height: 22px; margin-bottom: 5px; color: var(--gold); font: 600 11px var(--display); letter-spacing: 0.08em; text-transform: uppercase; }
 .inventory-section-title span:last-child { color: var(--muted); font: 500 10px var(--body); letter-spacing: 0.04em; text-transform: none; }
 .inventory-pages { display: flex; gap: 5px; margin-bottom: 6px; }
@@ -319,10 +327,16 @@ kbd {
 .paperdoll-stats div { display: flex; justify-content: space-between; gap: 4px; padding: 4px 5px; border: 1px solid #544126; border-radius: 3px; background: #08070666; }
 .paperdoll-stats small { color: var(--muted); font-size: 9px; }
 .paperdoll-stats b { color: #e9d09a; font-size: 10px; }
-.inventory-grid { display: grid; grid-template-columns: repeat(5, 42px); grid-template-rows: repeat(6, 42px); gap: 5px; align-content: start; justify-content: center; }
-.inventory-grid .slot { width: 42px; height: 42px; padding: 7px; border-radius: 3px; }
+/* Alt aksesuar sırası: kolye, yüzük, bilezik, kemer — küçük gözler, ortalı */
+.paperdoll-acc { display: flex; justify-content: center; gap: 6px; margin-top: 6px; }
+.paperdoll-acc .paperdoll-slot { width: 34px; height: 34px; padding: 6px; }
+.paperdoll-acc .paperdoll-equip small { max-width: 46px; font-size: 7px; }
+/* Izgara çanta genişliğini ve kalan yüksekliği doldurur; sabit göz boyutu yok. */
+.inventory-grid { display: grid; grid-template-columns: repeat(5, minmax(34px, 1fr)); grid-template-rows: repeat(6, minmax(34px, 1fr)); gap: 5px; }
+.inventory-bag .inventory-grid { flex: 1; min-height: 0; padding: 6px; background: #181410cc; border: 1px solid #4a3a20; border-radius: 4px; }
+.inventory-grid .slot { width: 100%; height: 100%; padding: 7px; border-radius: 3px; }
 .inventory-grid .slot svg { width: 100%; height: 100%; }
-.inventory-grid .slot.multi { height: auto; border-color: #8a6d38; }
+.inventory-grid .slot.multi { height: 100%; border-color: #8a6d38; }
 .inventory-grid .slot.multi svg { height: 92%; margin-top: 4%; }
 .inventory-sort { margin-right: 8px; padding: 1px 8px; border: 1px solid #6d542a; border-radius: 3px; background: linear-gradient(#352919, #171109); color: #d9c28e; font: 600 10px var(--body); cursor: pointer; }
 .inventory-sort:hover { border-color: var(--gold); color: #fff0c6; }
@@ -343,8 +357,8 @@ kbd {
   .paperdoll-stage { grid-template-columns: 38px minmax(0, 1fr) 38px; min-height: 220px; max-height: 250px; }
   .paperdoll-equip .paperdoll-slot { width: 34px; height: 34px; padding: 5px; }
   .paperdoll-equip small { font-size: 7px; }
-  .inventory-grid { grid-template-columns: repeat(5, 33px); grid-template-rows: repeat(6, 33px); gap: 4px; }
-  .inventory-grid .slot { width: 33px; height: 33px; padding: 5px; }
+  .inventory-grid { grid-template-columns: repeat(5, minmax(30px, 1fr)); grid-template-rows: repeat(6, minmax(28px, 1fr)); gap: 4px; }
+  .inventory-grid .slot { padding: 5px; }
 }
 @media (max-width: 800px) {
   .win-inv .body { padding: 7px; }
@@ -356,11 +370,11 @@ kbd {
   .inventory-section-title span:last-child { font-size: 8px; }
   .inventory-pages { gap: 3px; margin-bottom: 4px; }
   .inventory-page { width: 27px; height: 23px; }
-  .inventory-grid { grid-template-columns: repeat(5, clamp(26px, 8vw, 36px)); grid-template-rows: repeat(6, clamp(26px, 8vw, 36px)); gap: 3px; }
-  .inventory-grid .slot { width: clamp(26px, 8vw, 36px); height: clamp(26px, 8vw, 36px); padding: 5px; }
+  .inventory-grid { grid-template-columns: repeat(5, minmax(30px, 1fr)); grid-template-rows: repeat(6, minmax(26px, 1fr)); gap: 3px; }
+  .inventory-grid .slot { padding: 5px; }
   .win-inv.with-service .paperdoll-stage { min-height: 165px; }
-  .win-inv.with-service .inventory-grid { grid-template-columns: repeat(5, clamp(24px, 6.8vw, 32px)); grid-template-rows: repeat(6, clamp(24px, 6.8vw, 32px)); gap: 2px; }
-  .win-inv.with-service .inventory-grid .slot { width: clamp(24px, 6.8vw, 32px); height: clamp(24px, 6.8vw, 32px); padding: 4px; }
+  .win-inv.with-service .inventory-grid { grid-template-columns: repeat(5, minmax(24px, 1fr)); grid-template-rows: repeat(6, minmax(22px, 1fr)); gap: 2px; }
+  .win-inv.with-service .inventory-grid .slot { padding: 4px; }
 }
 
 .slot { position: relative; width: 40px; height: 40px; padding: 7px; background: radial-gradient(circle at 50% 30%, #33291a, #110c07); border: 1px solid #4a3a20; border-radius: 4px; }
@@ -506,6 +520,29 @@ kbd {
 #death p { color: var(--muted); margin: 10px 0 24px; }
 #death button { padding: 12px 28px; font-size: 15px; }
 @keyframes fadein { from { opacity: 0; } }
+
+/* ---------------------------------------------------------------- Dünya haritası */
+#worldmap {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: #000c; pointer-events: auto;
+}
+.wm-panel {
+  width: min(92vmin, 760px); background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 20px 60px #000c, inset 0 1px 0 #ffffff12; backdrop-filter: blur(6px); overflow: hidden;
+}
+.wm-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid var(--line); background: linear-gradient(#3a2c18, #1e160c); }
+.wm-head h3 { margin: 0; font: 600 15px var(--display); letter-spacing: 0.1em; color: var(--gold); }
+.wm-head .x { padding: 2px 8px; background: none; border-color: transparent; color: var(--muted); }
+.wm-head .x:hover { color: var(--gold); border-color: var(--gold-dim); }
+#worldmap canvas { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+.wm-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 16px; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.wm-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.wm-legend i { width: 10px; height: 10px; flex: none; border-radius: 50%; border: 1px solid #0009; }
+.wm-legend i.line { width: 16px; height: 3px; border-radius: 2px; border: 0; }
+@media (max-width: 800px) {
+  .wm-panel { width: min(96vw, 92vmin); }
+  .wm-legend { gap: 4px 10px; font-size: 10px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .banner.show, #death { animation-duration: 0.01s; }

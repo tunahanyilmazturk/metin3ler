@@ -234,13 +234,14 @@ export class Windows {
             <section class="inventory-paperdoll">
               <div class="inventory-section-title"><span>Karakter</span><span>Giydiklerin</span></div>
               <div class="paperdoll-stage">
-                <div class="paperdoll-rail">${['weapon', 'necklace', 'ring'].map((slot) => equipmentSlot(slot as EquipSlot)).join('')}</div>
+                <div class="paperdoll-rail">${(['weapon', 'shield', 'earring'] as EquipSlot[]).map(equipmentSlot).join('')}</div>
                 <div class="paperdoll-portrait">
                   <div class="paperdoll-canvas-host"></div>
                   <div class="paperdoll-caption"><b data-inventory-name></b><small>Seviye ${p.level} · ${p.cls.name}</small></div>
                 </div>
-                <div class="paperdoll-rail">${['helmet', 'armor', 'boots'].map((slot) => equipmentSlot(slot as EquipSlot)).join('')}</div>
+                <div class="paperdoll-rail">${(['helmet', 'armor', 'boots'] as EquipSlot[]).map(equipmentSlot).join('')}</div>
               </div>
+              <div class="paperdoll-acc">${(['necklace', 'ring', 'bracelet', 'belt'] as EquipSlot[]).map(equipmentSlot).join('')}</div>
               <div class="paperdoll-stats">
                 <div><small>Saldırı</small><b>${p.atk}</b></div>
                 <div><small>Savunma</small><b>${p.def}</b></div>
@@ -384,7 +385,7 @@ export class Windows {
         const CATS: [string, string][] = [['all', 'Tümü'], ['weapon', 'Silah'], ['armor', 'Zırh'], ['jewel', 'Takı'], ['consum', 'İksir/Diğer']];
         const catOf = (id: string) => {
           const t = ITEMS[id].type;
-          return t === 'weapon' ? 'weapon' : ['armor', 'helmet', 'boots'].includes(t) ? 'armor' : ['necklace', 'ring'].includes(t) ? 'jewel' : 'consum';
+          return t === 'weapon' ? 'weapon' : ['armor', 'helmet', 'boots', 'shield'].includes(t) ? 'armor' : ['necklace', 'ring', 'earring', 'bracelet', 'belt'].includes(t) ? 'jewel' : 'consum';
         };
         const cats = CATS.filter(([k]) => k === 'all' || stock.some((id) => catOf(id) === k));
         const list = stock.filter((id) => this.shopCat === 'all' || catOf(id) === this.shopCat);
@@ -598,6 +599,8 @@ export class Windows {
             <div><kbd>R</kbd> Ata bin / in</div>
             <div><kbd>Sol tık</kbd> Hedef seç / yürü</div><div><kbd>Sürükle</kbd> Kamerayı döndür</div>
             <div><kbd>Tekerlek</kbd> Yakınlaştır</div><div><kbd>I</kbd> <kbd>C</kbd> <kbd>J</kbd> Pencereler</div>
+            <div><kbd>M</kbd> / <kbd>B</kbd> Dünya haritası</div><div><kbd>N</kbd> Sessiz</div>
+            <div><kbd>+</kbd> / <kbd>−</kbd> Mini haritada yakınlaştır</div><div><kbd>Esc</kbd> Kapat / ayarlar</div>
           </div>
           <div class="btns"><button class="primary" data-save>Oyunu Kaydet</button><button class="danger" data-reset>Karakteri Sil</button></div>`;
         break;

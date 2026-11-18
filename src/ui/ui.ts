@@ -8,6 +8,7 @@ import { icon } from './icons';
 import { Minimap } from './minimap';
 import { Overlay } from './overlay';
 import { Windows } from './windows';
+import { WorldMap } from './worldmap';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 
@@ -30,6 +31,7 @@ export class UI {
   private windows!: Windows;
   private overlay!: Overlay;
   private minimap!: Minimap;
+  private worldmap!: WorldMap;
   private el: Record<string, HTMLElement> = {};
   private skillEls: { root: HTMLElement; cd: HTMLElement; cdText: HTMLElement }[] = [];
   private hurt = 0;
@@ -73,6 +75,11 @@ export class UI {
         </div>
         <div class="mm-wrap">
           <div class="mm-ring"><canvas id="minimap" width="184" height="184"></canvas></div>
+          <div class="mm-zooms">
+            <button class="mm-zoom" type="button" data-zoom="in" title="Yakınlaştır" aria-label="Mini haritayı yakınlaştır">+</button>
+            <button class="mm-zoom" type="button" data-zoom="out" title="Uzaklaştır" aria-label="Mini haritayı uzaklaştır">−</button>
+          </div>
+          <button class="mm-expand" type="button" title="Dünya haritası (M)" aria-label="Dünya haritasını aç">⤢</button>
           <div class="mm-info"><span id="mm-clock"></span><span id="mm-pos"></span></div>
         </div>
         <div class="log" id="log"></div>
@@ -94,6 +101,20 @@ export class UI {
         <div class="fps" id="fps"></div>
         <div class="hurt" id="hurt"></div>
         <div class="banner" id="banner"></div>
+        <div id="worldmap" class="hidden">
+          <div class="wm-panel">
+            <div class="wm-head"><h3>Dünya Haritası</h3><button class="x" type="button" data-wm-close aria-label="Kapat">✕</button></div>
+            <canvas id="wmap" width="680" height="680"></canvas>
+            <div class="wm-legend">
+              <span><i style="background:#ff4038"></i>Düşman</span>
+              <span><i style="background:#ff9020"></i>Boss</span>
+              <span><i style="background:#ffe060"></i>NPC</span>
+              <span><i style="background:#ffd34a"></i>Görev</span>
+              <span><i class="line" style="background:#f0c040"></i>İz</span>
+              <span><i style="background:#c070ff"></i>Taş</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div id="windows"></div>
       <div id="tooltip"></div>
@@ -206,6 +227,24 @@ export class UI {
     attack.addEventListener('pointerup', releaseAttack);
     attack.addEventListener('pointercancel', releaseAttack);
     attack.addEventListener('lostpointercapture', releaseAttack);
+
+    // Mini harita: +/- yakınlaştırma, tekerlek, büyük harita düğmesi.
+    // pointerdown'da durdur ki tıklamalar oyun tuvaline (yürüme/hedef) sızmasın.
+    const mmWrap = $('.mm-wrap', this.hud);
+    mmWrap.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).closest('button')) e.preventDefault();
+    });
+    mmWrap.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+      if (!b || !this.minimap) return;
+      e.preventDefault();
+      if (b.classList.contains('mm-zoom')) this.minimap.zoomBy(b.dataset.zoom === 'in' ? -1 : 1);
+      else if (b.classList.contains('mm-expand')) this.worldmap?.toggle();
+    });
+    $('#minimap').addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (this.minimap) this.minimap.zoomBy(Math.sign((e as WheelEvent).deltaY));
+    }, { passive: false });
   }
 
   // ------------------------------------------------------------------ başlangıç
@@ -260,6 +299,7 @@ export class UI {
     const p = this.game.player;
     this.hud.classList.remove('hidden');
     this.minimap = new Minimap(this.game, $<HTMLCanvasElement>('#minimap'));
+    this.worldmap = new WorldMap(this.game, $<HTMLCanvasElement>('#wmap'), this.minimap);
     setText(this.el['p-name'], `${p.name} · ${p.cls.name}`);
     // Kısayol çubuğu: 4 yetenek, 2 iksir ve oto av kontrolleri
     const hb = $('#hotbar');
@@ -355,8 +395,12 @@ export class UI {
     if (inp.hit('KeyC')) this.windows.toggle('char');
     if (inp.hit('KeyJ')) this.windows.toggle('quest');
     if (inp.hit('KeyH')) g.autoHunt.toggle(p);
-    if (inp.hit('Escape') && !this.windows.closeTop()) { if (g.questNav.active) g.questNav.stop(); else this.windows.toggle('settings'); }
-    if (inp.hit('KeyM')) g.audio.setMuted(!g.audio.muted);
+    if (inp.hit('KeyM') || inp.hit('KeyB')) this.worldmap.toggle();
+    if (inp.hit('KeyN')) g.audio.setMuted(!g.audio.muted);
+    if (inp.hit('Escape')) {
+      if (this.worldmap.isOpen) this.worldmap.close();
+      else if (!this.windows.closeTop()) { if (g.questNav.active) g.questNav.stop(); else this.windows.toggle('settings'); }
+    }
 
     setText(this.el['p-level'], String(p.level));
     setWidth(this.el['p-hp'], p.hp / p.maxHp);
@@ -443,6 +487,7 @@ export class UI {
     }
 
     this.minimap.update(dt);
+    this.worldmap.update(dt);
     this.overlay.update(dt);
     this.windows.update();
   }

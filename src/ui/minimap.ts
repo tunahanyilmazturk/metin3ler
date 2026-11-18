@@ -2,13 +2,28 @@ import { clamp } from '../core/utils';
 import { WORLD_HALF, WORLD_SIZE } from '../data/world';
 import type { Game } from '../game';
 
-const VIEW = 95; // gösterilen yarıçap (m)
+/** Görüş yarıçapı basamakları (m); +/- düğmeleri ve tekerlek bunlar arasında gezinir. */
+export const MINIMAP_ZOOMS = [55, 95, 150];
+
+/** Görev hedefini gösteren dört kollu yıldız; mini harita ve dünya haritası ortak. */
+export function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI) / 4 - Math.PI / 2;
+    const rr = i % 2 === 0 ? r : r * 0.42;
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+}
 
 /** Araziden önceden çizilen, kuzey yukarı mini harita. */
 export class Minimap {
-  private base: HTMLCanvasElement;
+  /** Dünya haritası da aynı arazi görüntüsünü kullanır; ikinci kez üretilmez. */
+  readonly base: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private timer = 0;
+  private zoomIdx = 1;
 
   constructor(private game: Game, private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -36,6 +51,18 @@ export class Minimap {
     bctx.putImageData(img, 0, 0);
   }
 
+  /** Geçerli görüş yarıçapı (m). */
+  get viewRadius() { return MINIMAP_ZOOMS[this.zoomIdx]; }
+  get zoomLevel() { return this.zoomIdx; }
+
+  /** dir < 0 yakınlaştırır, dir > 0 uzaklaştırır. Oturumluk durumdur. */
+  zoomBy(dir: number) {
+    const next = clamp(this.zoomIdx + dir, 0, MINIMAP_ZOOMS.length - 1);
+    if (next === this.zoomIdx) return;
+    this.zoomIdx = next;
+    this.timer = 0; // yeni görüş hemen çizilsin
+  }
+
   update(dt: number) {
     this.timer -= dt;
     if (this.timer > 0) return;
@@ -43,15 +70,16 @@ export class Minimap {
     const g = this.game, p = g.player, ctx = this.ctx;
     const S = this.canvas.width;
     const N = g.terrain.res;
+    const view = this.viewRadius;
     const px = ((p.pos.x + WORLD_HALF) / WORLD_SIZE) * (N - 1);
     const pz = ((p.pos.z + WORLD_HALF) / WORLD_SIZE) * (N - 1);
-    const sv = (VIEW / WORLD_SIZE) * (N - 1);
+    const sv = (view / WORLD_SIZE) * (N - 1);
     ctx.fillStyle = '#10141a';
     ctx.fillRect(0, 0, S, S);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.base, px - sv, pz - sv, sv * 2, sv * 2, 0, 0, S, S);
 
-    const k = S / (VIEW * 2);
+    const k = S / (view * 2);
     const dot = (x: number, z: number, r: number, color: string) => {
       const sx = (x - p.pos.x) * k + S / 2, sy = (z - p.pos.z) * k + S / 2;
       if (sx < 0 || sy < 0 || sx > S || sy > S) return;
@@ -86,12 +114,16 @@ export class Minimap {
       ctx.stroke();
       const last = route[route.length - 1];
       let ex = mx(last.x), ey = my(last.z);
-      const dx = ex - S / 2, dy = ey - S / 2, d = Math.hypot(dx, dy), R = S / 2 - 5;
+      const dx = ex - S / 2, dy = ey - S / 2, d = Math.hypot(dx, dy), R = S / 2 - 7;
       if (d > R) { ex = S / 2 + (dx / d) * R; ey = S / 2 + (dy / d) * R; }
-      ctx.fillStyle = '#f0c040';
-      ctx.beginPath();
-      ctx.arc(ex, ey, 3, 0, Math.PI * 2);
+      // Uç nokta: nabız atan dört kollu altın yıldız
+      const pulse = 0.8 + 0.2 * Math.sin(g.time * 4);
+      drawStar(ctx, ex, ey, 5.8 * pulse);
+      ctx.fillStyle = '#ffd34a';
+      ctx.strokeStyle = '#201604aa';
+      ctx.lineWidth = 1;
       ctx.fill();
+      ctx.stroke();
       ctx.restore();
     }
 

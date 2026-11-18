@@ -1,11 +1,12 @@
 import type { ClassId } from './classes';
 import type { WeaponKind } from '../entities/humanoid';
 
-export type ItemType = 'weapon' | 'armor' | 'helmet' | 'boots' | 'necklace' | 'ring' | 'potion' | 'material';
-export type EquipSlot = 'weapon' | 'armor' | 'helmet' | 'boots' | 'necklace' | 'ring';
-export const EQUIP_SLOTS: EquipSlot[] = ['weapon', 'helmet', 'armor', 'boots', 'necklace', 'ring'];
+export type ItemType = 'weapon' | 'armor' | 'helmet' | 'boots' | 'necklace' | 'ring' | 'shield' | 'earring' | 'bracelet' | 'belt' | 'potion' | 'material';
+export type EquipSlot = 'weapon' | 'armor' | 'helmet' | 'boots' | 'necklace' | 'ring' | 'shield' | 'earring' | 'bracelet' | 'belt';
+export const EQUIP_SLOTS: EquipSlot[] = ['weapon', 'shield', 'helmet', 'armor', 'boots', 'necklace', 'ring', 'earring', 'bracelet', 'belt'];
 export const SLOT_NAMES: Record<EquipSlot, string> = {
-  weapon: 'Silah', helmet: 'Miğfer', armor: 'Zırh', boots: 'Çizme', necklace: 'Kolye', ring: 'Yüzük',
+  weapon: 'Silah', shield: 'Kalkan', helmet: 'Miğfer', armor: 'Zırh', boots: 'Çizme',
+  necklace: 'Kolye', ring: 'Yüzük', earring: 'Küpe', bracelet: 'Bilezik', belt: 'Kemer',
 };
 
 export interface ItemDef {
@@ -101,6 +102,27 @@ add({ id: 'ring2', name: 'Kan Taşı Yüzüğü', type: 'ring', icon: 'ring', ra
 add({ id: 'ring3', name: 'Devin Mührü', type: 'ring', icon: 'ring', rarity: 3, level: 22, atk: 26, crit: 6, hp: 100, price: 14000, look: { color: 0xe6bd55, metal: 0.9, rough: 0.19 } });
 add({ id: 'ring4', name: 'Taht Mührü', type: 'ring', icon: 'ring', rarity: 3, level: 26, atk: 38, crit: 8, hp: 160, price: 21000, look: { color: 0xf0d070, metal: 0.95, rough: 0.16 } });
 
+// Kalkanlar: Metin2 geleneğine uygun olarak savaşçıya özel
+add({ id: 'shield1', name: 'Ahşap Kalkan', type: 'shield', icon: 'shield', rarity: 0, level: 1, cls: 'warrior', def: 5, hp: 15, price: 120, look: { color: 0x7a5a34, metal: 0.05, rough: 0.85 } });
+add({ id: 'shield2', name: 'Demir Kalkan', type: 'shield', icon: 'shield', rarity: 1, level: 9, cls: 'warrior', def: 14, hp: 50, price: 1400, look: { color: 0x8a94a0, metal: 0.8, rough: 0.3 } });
+add({ id: 'shield3', name: 'Aslan Kalkan', type: 'shield', icon: 'shield', rarity: 2, level: 17, cls: 'warrior', def: 26, hp: 110, price: 6200, look: { color: 0xc79a45, metal: 0.85, rough: 0.24 } });
+add({ id: 'shield4', name: 'Ejder Kalkanı', type: 'shield', icon: 'shield', rarity: 3, level: 26, cls: 'warrior', def: 40, hp: 200, price: 16000, look: { color: 0xa03a30, metal: 0.9, rough: 0.2 } });
+
+// Küpeler: saldırı ve kritik ağırlıklı takılar
+add({ id: 'earring1', name: 'Bakır Küpe', type: 'earring', icon: 'earring', rarity: 0, level: 4, atk: 3, crit: 1, price: 450, look: { color: 0xc78350, metal: 0.8, rough: 0.3 } });
+add({ id: 'earring2', name: 'Gümüş Küpe', type: 'earring', icon: 'earring', rarity: 1, level: 13, atk: 8, crit: 3, price: 4200, look: { color: 0xc8d0dc, metal: 0.9, rough: 0.22 } });
+add({ id: 'earring3', name: 'Ay Küpesi', type: 'earring', icon: 'earring', rarity: 2, level: 21, atk: 15, crit: 5, price: 12000, look: { color: 0xb8c8f0, metal: 0.85, rough: 0.18 } });
+
+// Bilezikler: savunma ve can ağırlıklı takılar
+add({ id: 'bracelet1', name: 'Deri Bilezik', type: 'bracelet', icon: 'bracelet', rarity: 0, level: 3, def: 2, hp: 25, price: 350, look: { color: 0x6e4a2c, metal: 0.05, rough: 0.8 } });
+add({ id: 'bracelet2', name: 'Zincir Bilezik', type: 'bracelet', icon: 'bracelet', rarity: 1, level: 12, def: 5, hp: 80, atk: 4, price: 3900, look: { color: 0x9aa4b0, metal: 0.75, rough: 0.3 } });
+add({ id: 'bracelet3', name: 'Kadim Bilezik', type: 'bracelet', icon: 'bracelet', rarity: 2, level: 20, def: 9, hp: 150, atk: 9, price: 11500, look: { color: 0xd0a850, metal: 0.88, rough: 0.2 } });
+
+// Kemerler: can ağırlıklı kuşaklar
+add({ id: 'belt1', name: 'Bez Kuşak', type: 'belt', icon: 'belt', rarity: 0, level: 2, hp: 25, price: 250, look: { color: 0x8a7350, metal: 0, rough: 0.85 } });
+add({ id: 'belt2', name: 'Deri Kemer', type: 'belt', icon: 'belt', rarity: 1, level: 11, hp: 75, def: 3, price: 3200, look: { color: 0x5c3a22, metal: 0.15, rough: 0.7 } });
+add({ id: 'belt3', name: 'Savaş Kuşağı', type: 'belt', icon: 'belt', rarity: 2, level: 19, hp: 150, def: 6, atk: 5, price: 9800, look: { color: 0x8a4a2a, metal: 0.6, rough: 0.35 } });
+
 add({ id: 'hp1', name: 'Kırmızı İksir', type: 'potion', icon: 'potion', rarity: 0, level: 1, heal: 120, price: 25, stack: true, desc: '120 can yeniler.' });
 add({ id: 'hp2', name: 'Büyük Kırmızı İksir', type: 'potion', icon: 'potion', rarity: 1, level: 10, heal: 380, price: 110, stack: true, desc: '380 can yeniler.' });
 add({ id: 'hp3', name: 'Kral İksiri', type: 'potion', icon: 'potion', rarity: 2, level: 20, heal: 850, price: 400, stack: true, desc: '850 can yeniler.' });
@@ -135,13 +157,14 @@ export const SHOP_STOCK = [
 export const WEAPON_STOCK = [
   'sword1', 'sword2', 'sword3', 'dagger1', 'dagger2', 'dagger3', 'staff1', 'staff2', 'staff3', 'spear1',
 ];
-/** Zırhçının sattığı zırh ve parçalar */
+/** Zırhçının sattığı zırh ve parçalar; üst kademeler yalnızca düşüşle bulunur */
 export const ARMOR_STOCK = [
-  'armor1', 'armor2', 'armor3', 'helm1', 'helm2', 'boots1', 'boots2',
+  'armor1', 'armor2', 'armor3', 'helm1', 'helm2', 'boots1', 'boots2', 'shield1', 'shield2',
 ];
 /** Kuyumcunun sattığı takılar; üst kademeler yalnızca düşüşle bulunur */
 export const JEWEL_STOCK = [
   'ring1', 'ring2', 'neck1', 'neck2', 'neck3',
+  'earring1', 'earring2', 'bracelet1', 'bracelet2', 'belt1', 'belt2',
 ];
 /** NPC kimliğine göre dükkân stoğu */
 export const SHOPS: Record<string, string[]> = {

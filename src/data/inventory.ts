@@ -61,7 +61,7 @@ export function findSpace(inv: InvCell[], size: number, limit = INVENTORY_OPEN_S
 }
 
 const TYPE_ORDER: Record<string, number> = {
-  weapon: 0, armor: 1, helmet: 2, boots: 3, necklace: 4, ring: 5, potion: 6, material: 7,
+  weapon: 0, shield: 1, armor: 2, helmet: 3, boots: 4, necklace: 5, ring: 6, earring: 7, bracelet: 8, belt: 9, potion: 10, material: 11,
 };
 
 /** Akıllı sıralama: tür → enderlik → seviye → artı → ad. */
