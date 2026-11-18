@@ -21,6 +21,8 @@ const PATHS: Record<string, string> = {
   bolt: 'M14 1 4 14h6l-2 9 12-14h-7z',
   coin: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 4-4 6 4 6 4-6z',
   spear: 'M22 2c-1.4.6-2.9 1.8-3.7 3.2l1.1 1.1-13.9 13.9-2.6 1.6 1.6-2.6L18.4 5.3l1.1 1.1C21 5.6 21.6 3.8 22 2z',
+  route: 'M12 1a8 8 0 0 0-8 8c0 6 8 14 8 14s8-8 8-14a8 8 0 0 0-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z',
+  trail: 'M5 20a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm5-5a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm5-5a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm4-5a2 2 0 1 1 0-4 2 2 0 0 1 0 4z',
 };
 
 export function icon(name: string, color = 'currentColor') {

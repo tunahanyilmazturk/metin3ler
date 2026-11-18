@@ -13,7 +13,7 @@ export class CharacterPreview {
   private avatarNodes: THREE.Object3D[] = [];
   private pointerId: number | null = null;
   private pointerX = 0;
-  private yaw = 0;
+  private yaw = -0.32;
   private width = 0;
   private height = 0;
 

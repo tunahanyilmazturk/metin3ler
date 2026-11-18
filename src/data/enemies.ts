@@ -22,7 +22,7 @@ export interface EnemyDef {
 
 const defs: EnemyDef[] = [
   { id: 'wolf', name: 'Bozkurt', level: 2, hp: 85, atk: 15, def: 2, exp: 20, gold: [6, 16], speed: 5.4, aggro: 5, range: 1.9, attackCd: 1.5, radius: 0.6,
-    drops: [{ id: 'pelt', chance: 0.45 }, { id: 'hp1', chance: 0.14 }, { id: 'boots1', chance: 0.03 }, { id: 'sword1', chance: 0.02 }, { id: 'dagger1', chance: 0.02 }, { id: 'staff1', chance: 0.02 }, { id: 'ring1', chance: 0.015 }], respawn: 22 },
+    drops: [{ id: 'pelt', chance: 0.6 }, { id: 'hp1', chance: 0.14 }, { id: 'boots1', chance: 0.03 }, { id: 'sword1', chance: 0.02 }, { id: 'dagger1', chance: 0.02 }, { id: 'staff1', chance: 0.02 }, { id: 'ring1', chance: 0.015 }], respawn: 22 },
   { id: 'alpha_wolf', name: 'Sürü Lideri', level: 6, hp: 380, atk: 34, def: 6, exp: 110, gold: [40, 80], speed: 6, aggro: 14, range: 2.4, attackCd: 1.4, radius: 0.9, boss: true,
     drops: [{ id: 'pelt', chance: 1 }, { id: 'neck1', chance: 0.2 }, { id: 'helm1', chance: 0.25 }, { id: 'hp1', chance: 0.6 }, { id: 'armor2', chance: 0.08 }, { id: 'hp2', chance: 0.15 }], respawn: 70 },
   { id: 'boar', name: 'Yaban Domuzu', level: 7, hp: 240, atk: 36, def: 8, exp: 62, gold: [18, 38], speed: 5, aggro: 9, range: 2.0, attackCd: 1.7, radius: 0.75,
@@ -30,7 +30,7 @@ const defs: EnemyDef[] = [
   { id: 'bear', name: 'Dağ Ayısı', level: 11, hp: 520, atk: 58, def: 14, exp: 140, gold: [35, 70], speed: 4.8, aggro: 11, range: 2.6, attackCd: 1.9, radius: 1.1,
     drops: [{ id: 'claw', chance: 0.5 }, { id: 'hp2', chance: 0.15 }, { id: 'mp2', chance: 0.1 }, { id: 'helm2', chance: 0.05 }, { id: 'boots2', chance: 0.05 }, { id: 'ring2', chance: 0.03 }, { id: 'armor3', chance: 0.015 }], respawn: 34 },
   { id: 'bandit', name: 'Haydut', level: 14, hp: 640, atk: 76, def: 20, exp: 200, gold: [60, 120], speed: 5.2, aggro: 14, range: 2.3, attackCd: 1.5, radius: 0.55,
-    drops: [{ id: 'medal', chance: 0.35 }, { id: 'hp2', chance: 0.2 }, { id: 'mp2', chance: 0.12 }, { id: 'hp3', chance: 0.05 }, { id: 'sword2', chance: 0.03 }, { id: 'dagger2', chance: 0.03 }, { id: 'staff2', chance: 0.03 }, { id: 'spear1', chance: 0.04 }, { id: 'ring2', chance: 0.03 }, { id: 'neck2', chance: 0.02 }], respawn: 30 },
+    drops: [{ id: 'medal', chance: 0.55 }, { id: 'hp2', chance: 0.2 }, { id: 'mp2', chance: 0.12 }, { id: 'hp3', chance: 0.05 }, { id: 'sword2', chance: 0.03 }, { id: 'dagger2', chance: 0.03 }, { id: 'staff2', chance: 0.03 }, { id: 'spear1', chance: 0.04 }, { id: 'ring2', chance: 0.03 }, { id: 'neck2', chance: 0.02 }], respawn: 30 },
   { id: 'bandit_chief', name: 'Haydut Reisi Karaca', level: 18, hp: 3200, atk: 120, def: 32, exp: 1400, gold: [500, 900], speed: 5.4, aggro: 16, range: 2.8, attackCd: 1.4, radius: 0.75, boss: true,
     drops: [{ id: 'armor3', chance: 0.5 }, { id: 'neck2', chance: 0.4 }, { id: 'crystal', chance: 1 }, { id: 'hp2', chance: 1 }, { id: 'hp3', chance: 0.4 }, { id: 'medal', chance: 1 }, { id: 'sword3', chance: 0.12 }, { id: 'dagger3', chance: 0.12 }, { id: 'staff3', chance: 0.12 }, { id: 'spear2', chance: 0.15 }, { id: 'helm3', chance: 0.2 }, { id: 'boots3', chance: 0.15 }, { id: 'ring3', chance: 0.08 }], respawn: 150 },
   { id: 'golem', name: 'Taş Muhafız', level: 22, hp: 1500, atk: 135, def: 48, exp: 520, gold: [120, 220], speed: 3.8, aggro: 12, range: 3.0, attackCd: 2.1, radius: 1.0,

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { clamp, damp, lerp } from '../core/utils';
 import { CreatureModel, joint, mat, part } from './model';
 import type { TexPair } from '../render/textures';
+import type { ClassId } from '../data/classes';
+import { PlayerOutfit } from './playerOutfit';
 
 export type WeaponKind = 'sword' | 'dagger' | 'staff' | 'axe' | 'club' | 'spear' | 'none';
 
@@ -30,6 +32,7 @@ export interface HumanLook {
   /** Tüm gövdeye uygulanacak doku (ör. taş golem) */
   tex?: TexPair;
   eyeGlow?: number;
+  playerStyle?: ClassId;
 }
 
 // Saldırı anahtar kareleri: [t, sağKolX, sağKolZ, dirsek, gövdeY, gövdeX, hamle]
@@ -77,6 +80,7 @@ export class Humanoid implements CreatureModel {
   private dead = false;
   private deadT = 0;
   private weaponKind: WeaponKind;
+  private outfit?: PlayerOutfit;
   /** Binek üstündeyken bacaklar eyer pozu alır. */
   riding = false;
 
@@ -87,6 +91,7 @@ export class Humanoid implements CreatureModel {
     const skin = mat(look.skin, look.tex ? 0.9 : 0.62, 0, tx);
     const cloth = mat(look.cloth, 0.88, 0, tx);
     const armor = mat(look.armor, look.armorRough, look.armorMetal, tx);
+    if (look.playerStyle) this.outfit = new PlayerOutfit(look.playerStyle, armor);
     const leather = mat(look.tex ? look.cloth : 0x2a1c12, 0.8, 0, tx);
     const gold = mat(0xd4a03c, 0.32, 1);
     const boots = look.bootsColor === undefined
@@ -99,14 +104,18 @@ export class Humanoid implements CreatureModel {
     this.hips = joint(this.body, 0, 0.96, 0);
 
     part(new THREE.CapsuleGeometry(0.125 * b, 0.16, 4, 10), cloth, this.hips, 0, 0, 0).rotation.z = Math.PI / 2;
-    const skirtLen = look.robe ? 0.78 : 0.4;
-    part(new THREE.CylinderGeometry(0.19 * b, (look.robe ? 0.34 : 0.27) * b, skirtLen, 14, 1, true), mat(look.cloth, 0.88, 0, { ...tx, key: (tx as any).key ? 'texds' : 'ds' }), this.hips, 0, -skirtLen / 2 + 0.06, 0).material.side = THREE.DoubleSide;
+    const skirtLen = this.outfit ? 0.24 : look.robe ? 0.78 : 0.4;
+    const skirtHem = this.outfit ? 0.234 : look.robe ? 0.34 : 0.27;
+    part(new THREE.CylinderGeometry(0.19 * b, skirtHem * b, skirtLen, 14, 1, true), mat(look.cloth, 0.88, 0, { ...tx, key: look.tex ? 'texds' : 'ds' }), this.hips, 0, -skirtLen / 2 + 0.06, 0).material.side = THREE.DoubleSide;
 
     const mkLeg = (sx: number) => {
       const leg = joint(this.hips, sx * 0.1 * b, -0.05, 0);
       part(new THREE.CapsuleGeometry(0.085 * b, 0.3, 4, 10), cloth, leg, 0, -0.22, 0);
       const knee = joint(leg, 0, -0.44, 0);
       part(new THREE.CapsuleGeometry(0.072 * b, 0.28, 4, 10), leather, knee, 0, -0.2, 0);
+      if (this.outfit) {
+        part(new THREE.CylinderGeometry(0.083 * b, 0.07 * b, 0.22, 10), boots, knee, 0, -0.29, 0);
+      }
       const boot = part(new THREE.BoxGeometry(0.115 * b, 0.09, 0.27), boots, knee, 0, -0.42, 0.06);
       boot.rotation.x = -0.08;
       if ((look.bootsMetal ?? 0) > 0.65) {
@@ -128,12 +137,13 @@ export class Humanoid implements CreatureModel {
     part(new THREE.BoxGeometry(0.09, 0.07, 0.03), gold, this.spine, 0, 0.03, 0.14 * b);
     if (look.armorMetal > 0.3) {
       // Zırh etekliği (tasetler)
-      for (const sx of [-1, 0, 1]) {
+      for (const sx of this.outfit ? [-1, 1] : [-1, 0, 1]) {
         const t = part(new THREE.BoxGeometry(0.15 * b, 0.26, 0.03), armor, this.hips, sx * 0.15 * b, -0.12, 0.15 * b);
         t.rotation.x = -0.18;
         t.rotation.y = sx * 0.5;
       }
     }
+    this.outfit?.addTorso(this.spine, this.hips, b);
 
     this.head = joint(this.spine, 0, 0.6, 0);
     part(new THREE.CylinderGeometry(0.052 * b, 0.065 * b, 0.12, 10), skin, this.head, 0, 0, 0);
@@ -160,21 +170,29 @@ export class Humanoid implements CreatureModel {
       const guard = part(new THREE.CylinderGeometry(0.145, 0.175, 0.14, 14, 1, true, Math.PI * 0.6, Math.PI * 0.8), helmet, this.head, 0, 0.1, 0);
       guard.material.side = THREE.DoubleSide;
       guard.rotation.y = Math.PI;
+    } else if (this.outfit && look.playerStyle !== 'warrior') {
+      this.outfit.addHeadwear(this.head);
     } else if (!look.tex) {
       const hair = mat(look.hair, 0.7);
       const cap = part(new THREE.SphereGeometry(0.128, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, this.head, 0, 0.175, -0.012);
       cap.rotation.x = -0.35;
       part(new THREE.SphereGeometry(0.05, 10, 8), hair, this.head, 0, 0.31, -0.04);
       part(new THREE.CapsuleGeometry(0.03, 0.2, 4, 8), hair, this.head, 0, 0.12, -0.14).rotation.x = 0.25;
+      this.outfit?.addHeadwear(this.head);
     }
 
     const mkArm = (sx: number) => {
       const arm = joint(this.spine, sx * 0.25 * b, 0.5, 0);
-      const p = part(new THREE.SphereGeometry(0.105 * b, 14, 10), armor, arm, sx * 0.02, 0.03, 0);
-      p.scale.set(1.15, 0.8, 1.15);
+      const shoulderSize = this.outfit ? 0.077 : 0.105;
+      const shoulder = part(new THREE.SphereGeometry(shoulderSize * b, 14, 10), armor, arm, sx * 0.02, 0.03, 0);
+      shoulder.scale.set(1.15, 0.8, 1.15);
+      this.outfit?.addShoulder(arm, sx);
       part(new THREE.CapsuleGeometry(0.058 * b, 0.2, 4, 10), cloth, arm, 0, -0.16, 0);
       const elbow = joint(arm, 0, -0.31, 0);
       part(new THREE.CapsuleGeometry(0.052 * b, 0.18, 4, 10), look.armorMetal > 0.3 ? armor : leather, elbow, 0, -0.14, 0);
+      if (this.outfit) {
+        part(new THREE.CylinderGeometry(0.066 * b, 0.052 * b, 0.13, 10), armor, elbow, 0, -0.18, 0);
+      }
       part(new THREE.SphereGeometry(0.052 * b, 10, 8), skin, elbow, 0, -0.29, 0);
       const hand = joint(elbow, 0, -0.29, 0);
       return [arm, elbow, hand] as const;
@@ -347,5 +365,6 @@ export class Humanoid implements CreatureModel {
     this.armL.rotation.set(aLx, 0, aLz);
     this.elbowR.rotation.x = eR;
     this.elbowL.rotation.x = eL;
+    this.outfit?.update(this.t, clamp(mb * run + attackPulse * 0.35, 0, 1), spY, this.riding);
   }
 }

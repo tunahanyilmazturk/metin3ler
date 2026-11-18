@@ -177,9 +177,11 @@ export class Player {
       helmet: !!this.equip.helmet, helmetColor: helmetLook?.color, helmetMetal: helmetLook?.metal, helmetRough: helmetLook?.rough,
       bootsColor: bootsLook?.color, bootsMetal: bootsLook?.metal,
       necklaceColor: necklaceLook?.color, ringColor: ringLook?.color,
-      robe: this.cls.robe, scale: 1, bulk: this.cls.id === 'warrior' ? 1.1 : 1,
+      playerStyle: this.cls.id,
+      scale: 1, bulk: this.cls.id === 'warrior' ? 1.14 : this.cls.id === 'assassin' ? 0.93 : 1,
     });
     this.model.root.position.copy(this.pos);
+    if (this.mounted) this.model.root.position.y += 0.66;
     this.model.root.rotation.y = this.yaw;
     this.model.riding = this.mounted;
     this.game.scene.add(this.model.root);
@@ -251,6 +253,7 @@ export class Player {
     }
     if (!this.alive) {
       g.autoHunt.stop();
+      g.questNav.update(dt, false); // oto görev: dirilme sayacını sürdürür
       this.model.update(dt, 0);
       return;
     }
@@ -298,6 +301,8 @@ export class Player {
 
     const manualHotbar = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].some((key) => inp.hit(key));
     const manualOverride = f !== 0 || r !== 0 || this.intent !== null || wantAttack || manualHotbar;
+    // Öncelik: tıklama niyeti > görev rotası > oto av. Elle girdi rotayı iptal eder.
+    const waypoint = g.questNav.update(dt, manualOverride || inp.mouse.clicked || inp.hit('KeyE'));
     const auto = g.autoHunt.update(dt, this, manualOverride);
     if (auto) {
       this.target = auto.target;
@@ -309,6 +314,9 @@ export class Player {
         mz = 0;
       }
       wantAttack = auto.attack;
+    } else if (waypoint) {
+      mx = waypoint.x - this.pos.x;
+      mz = waypoint.z - this.pos.z;
     }
 
     const ml = Math.hypot(mx, mz);
@@ -322,7 +330,8 @@ export class Player {
         let sp = this.moveSpeed * (inp.down('ShiftLeft') ? 1.4 : 1);
         if (this.attackT >= 0) sp *= 0.3;
         this.yaw = dampAngle(this.yaw, Math.atan2(mx, mz), 14, dt);
-        this.tryMove(mx * sp * dt, mz * sp * dt);
+        const travel = waypoint && !auto ? Math.min(sp * dt, ml) : sp * dt;
+        this.tryMove(mx * travel, mz * travel);
         this.speedNow = sp;
         this.stepTimer -= dt * sp;
         if (this.stepTimer <= 0 && g.terrain.getDirt(this.pos.x, this.pos.z) > 0.5) {

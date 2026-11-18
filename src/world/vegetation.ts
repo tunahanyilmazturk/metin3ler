@@ -250,8 +250,8 @@ export class Vegetation {
     const barkMat = new THREE.MeshStandardMaterial({ map: this.tex.bark.map, normalMap: this.tex.bark.normalMap, roughness: 0.95, vertexColors: true });
     this.tex.bark.map.repeat.set(2, 3);
 
-    // Kırpma (culling) verimli olsun diye ağaçlar 4x4 parçaya bölünür
-    const CH = 4;
+    // Kırpma (culling) verimli olsun diye ağaçlar 8x8 parçaya bölünür
+    const CH = 8;
     const buckets: THREE.Matrix4[][][] = kinds.map(() => Array.from({ length: CH * CH }, () => []));
     const tints: THREE.Color[][][] = kinds.map(() => Array.from({ length: CH * CH }, () => []));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
@@ -309,7 +309,9 @@ export class Vegetation {
     const rng = makeRng(31337);
     const mat = new THREE.MeshStandardMaterial({ map: this.tex.rock.map, normalMap: this.tex.rock.normalMap, roughness: 0.92 });
     const variants = [0, 1, 2].map((v) => blob(1, 2, 0.45, noise, v * 17.3, 0.7));
-    const lists: THREE.Matrix4[][] = [[], [], []];
+    // Kayalar da kırpma için 8x8 görünürlük hücrelerine bölünür
+    const CH = 8;
+    const lists = variants.map(() => Array.from({ length: CH * CH }, (): THREE.Matrix4[] => []));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const e = new THREE.Euler();
     let placed = 0;
@@ -328,17 +330,22 @@ export class Vegetation {
       p.set(x, h - sc * 0.15, z);
       q.setFromEuler(e.set(rng() * 0.5, rng() * 6.28, rng() * 0.5));
       s.set(sc * (0.8 + rng() * 0.6), sc * (0.6 + rng() * 0.6), sc * (0.8 + rng() * 0.6));
-      lists[placed % 3].push(m.compose(p, q, s).clone());
+      const cx = Math.floor(((x + WORLD_HALF) / WORLD_SIZE) * CH), cz = Math.floor(((z + WORLD_HALF) / WORLD_SIZE) * CH);
+      lists[placed % 3][cz * CH + cx].push(m.compose(p, q, s).clone());
       if (sc > 1) this.colliders.add(x, z, sc * 0.85);
       placed++;
     }
     onProgress(1);
-    lists.forEach((list, v) => {
-      const im = new THREE.InstancedMesh(variants[v], mat, list.length);
-      list.forEach((mm, i) => im.setMatrixAt(i, mm));
-      im.castShadow = true;
-      im.receiveShadow = true;
-      this.group.add(im);
+    lists.forEach((buckets, v) => {
+      buckets.forEach((list) => {
+        if (!list.length) return;
+        const im = new THREE.InstancedMesh(variants[v], mat, list.length);
+        list.forEach((mm, i) => im.setMatrixAt(i, mm));
+        im.castShadow = true;
+        im.receiveShadow = true;
+        im.computeBoundingSphere();
+        this.group.add(im);
+      });
     });
   }
 }

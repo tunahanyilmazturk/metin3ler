@@ -18,6 +18,25 @@ export class Colliders {
     if (list) list.push(id); else this.grid.set(k, [id]);
   }
 
+  /** Verilen konum ve yarıçap engellerden hiçbirine değmiyorsa true. (yol bulma sorgusu) */
+  isClear(x: number, z: number, radius: number) {
+    const cx = Math.floor(x / this.cell);
+    const cz = Math.floor(z / this.cell);
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        const list = this.grid.get(this.key(cx + i, cz + j));
+        if (!list) continue;
+        for (const id of list) {
+          const dx = x - this.xs[id];
+          const dz = z - this.zs[id];
+          const min = this.rs[id] + radius;
+          if (dx * dx + dz * dz < min * min) return false;
+        }
+      }
+    }
+    return true;
+  }
+
   /** Konumu engellerin dışına iter. */
   resolve(pos: THREE.Vector3, radius: number) {
     const cx = Math.floor(pos.x / this.cell);

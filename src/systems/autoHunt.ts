@@ -67,6 +67,12 @@ export class AutoHunt {
   enabled = false;
   status = 'Kapalı';
   stats: HuntStats = { kills: 0, exp: 0, gold: 0, items: 0, started: 0 };
+  /** Görev avı filtresi: yalnızca bu düşman türleri hedeflenir (null: kısıtlama yok). */
+  questIds: ReadonlySet<string> | null = null;
+  /** Görev filtresi etkinken lanetli taşlara da izin ver. */
+  questStones = false;
+  /** collectItems ayarından bağımsız ganimet toplama (topla görevleri). */
+  forceCollect = false;
 
   private skillWait = 0;
   private nextSkill = 0;
@@ -100,6 +106,7 @@ export class AutoHunt {
       return;
     }
     if (!player.alive) return;
+    this.game.questNav.stop();
     player.intent = null;
     this.begin(player.pos);
     this.game.events.emit('log', { msg: `Oto av açıldı · ${this.settings.radius} m alan.`, cls: 'good' });
@@ -119,7 +126,22 @@ export class AutoHunt {
     this.setStatus('Bölge taranıyor');
   }
 
+  /** Görev filtresini ayarlar/temizler (ids null: kısıtlama yok; stones: lanetli taşlara izin). */
+  setQuestFilter(ids: ReadonlySet<string> | null, stones: boolean) {
+    this.questIds = ids;
+    this.questStones = stones;
+  }
+
+  /** Görev zinciri sürüşü: avı verilen noktada başlatır ve görev filtresini kurar. */
+  questBegin(pos: Vector3, ids: ReadonlySet<string> | null, stones: boolean) {
+    this.begin(pos);
+    this.setQuestFilter(ids, stones);
+  }
+
   stop(message?: string) {
+    this.questIds = null;
+    this.questStones = false;
+    this.forceCollect = false;
     if (!this.enabled) return;
     this.enabled = false;
     this.returning = false;
@@ -276,7 +298,7 @@ export class AutoHunt {
       return { target: null, moveTo: null, attack: false };
     }
 
-    if (this.settings.collectItems) {
+    if (this.settings.collectItems || this.forceCollect) {
       const drop = this.game.loot.nearestDrop(player.pos, this.center, this.settings.radius);
       if (drop) {
         this.setStatus('Ganimet topluyor');
@@ -314,9 +336,15 @@ export class AutoHunt {
     }
     const aggroed = enemy.state === 'chase' || enemy.state === 'attack';
     if (inFight && !aggroed) return false; // dinlenme: sadece saldıranlarla savaş
+    const within = Math.hypot(enemy.pos.x - this.center.x, enemy.pos.z - this.center.z) <= this.settings.radius;
+    if (this.questIds) {
+      // Görev hedefi taş/boss ayarlarını es geçer; hedef dışı yalnızca öz-savunmada.
+      const questTarget = this.questIds.has(enemy.def.id) || (enemy.isStone && this.questStones);
+      return (questTarget || aggroed) && within;
+    }
     if (enemy.isStone && !this.settings.attackStones) return false;
     if (enemy.def.boss && !this.settings.attackBosses && !aggroed) return false;
-    return Math.hypot(enemy.pos.x - this.center.x, enemy.pos.z - this.center.z) <= this.settings.radius;
+    return within;
   }
 
   private findTarget(player: Player): Enemy | null {

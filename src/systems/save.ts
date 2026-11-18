@@ -22,7 +22,7 @@ export interface SaveData {
   vault?: (ItemStack | null)[];
 }
 
-export interface Settings { quality: Quality; muted: boolean; dayNight: DayNightMode }
+export interface Settings { quality: Quality; muted: boolean; dayNight: DayNightMode; autoTrail: boolean }
 
 const STAT_KEYS: StatKey[] = ['str', 'dex', 'vit', 'int'];
 const QUALITIES: Quality[] = ['low', 'medium', 'high', 'ultra'];
@@ -111,11 +111,12 @@ export const SaveSystem = {
             quality: QUALITIES.includes(value.quality as Quality) ? value.quality as Quality : defaultQuality,
             muted: typeof value.muted === 'boolean' ? value.muted : false,
             dayNight: DAY_NIGHT_MODES.includes(value.dayNight as DayNightMode) ? value.dayNight as DayNightMode : 'cycle',
+            autoTrail: typeof value.autoTrail === 'boolean' ? value.autoTrail : true,
           };
         }
       }
     } catch { /* yoksay */ }
-    return { quality: defaultQuality, muted: false, dayNight: 'cycle' };
+    return { quality: defaultQuality, muted: false, dayNight: 'cycle', autoTrail: true };
   },
   saveSettings(s: Settings) {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* yoksay */ }

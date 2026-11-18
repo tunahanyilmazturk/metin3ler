@@ -68,6 +68,33 @@ export class Minimap {
     }
     for (const n of g.npcs) dot(n.pos.x, n.pos.z, 3.2, '#ffe060');
 
+    // Görev rotası: altın çizgi + uç nokta işareti (görüş dışıysa daire kenarında)
+    const route = g.questNav.remaining;
+    if (g.questNav.active && route.length) {
+      const mx = (x: number) => (x - p.pos.x) * k + S / 2;
+      const my = (z: number) => (z - p.pos.z) * k + S / 2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.strokeStyle = '#f0c040';
+      ctx.lineWidth = 1.6;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(S / 2, S / 2);
+      for (const wp of route) ctx.lineTo(mx(wp.x), my(wp.z));
+      ctx.stroke();
+      const last = route[route.length - 1];
+      let ex = mx(last.x), ey = my(last.z);
+      const dx = ex - S / 2, dy = ey - S / 2, d = Math.hypot(dx, dy), R = S / 2 - 5;
+      if (d > R) { ex = S / 2 + (dx / d) * R; ey = S / 2 + (dy / d) * R; }
+      ctx.fillStyle = '#f0c040';
+      ctx.beginPath();
+      ctx.arc(ex, ey, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     // Oyuncu oku
     ctx.save();
     ctx.translate(S / 2, S / 2);

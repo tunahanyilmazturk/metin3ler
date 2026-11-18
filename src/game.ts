@@ -20,6 +20,7 @@ import { AutoHunt } from './systems/autoHunt';
 import { Economy } from './systems/economy';
 import { Loot } from './systems/loot';
 import { QuestLog } from './systems/quests';
+import { QuestNavigator } from './systems/questNavigator';
 import { SaveData, SaveSystem } from './systems/save';
 import { Spawner } from './systems/spawner';
 import { Vault } from './systems/vault';
@@ -50,6 +51,7 @@ export class Game {
   effects!: Effects;
   combat!: Combat;
   autoHunt: AutoHunt;
+  readonly questNav = new QuestNavigator(this);
   loot!: Loot;
   economy!: Economy;
   spawner!: Spawner;
@@ -61,6 +63,7 @@ export class Game {
   npcs: Npc[] = [];
   started = false;
   dayNightMode: DayNightMode = 'cycle';
+  autoTrail = true;
   time = 0;
   fps = 60;
   private last = performance.now();
@@ -110,6 +113,7 @@ export class Game {
     const settings = SaveSystem.loadSettings(window.matchMedia('(any-pointer: coarse)').matches ? 'low' : 'high');
     this.dayNightMode = settings.dayNight;
     this.audio.muted = settings.muted;
+    this.autoTrail = settings.autoTrail;
     this.setQuality(settings.quality, false);
     this.env.setMode(this.dayNightMode, this.menuCenter);
     this.camera.setView(0.6, 0.32, 58);
@@ -132,11 +136,20 @@ export class Game {
     this.persistSettings();
   }
 
+  /** Otomatik görev izi: açınca hemen kurar, kapayınca etkin izi (yürüme hariç) durdurur. */
+  setAutoTrail(on: boolean) {
+    this.autoTrail = on;
+    this.persistSettings();
+    if (on) this.questNav.ensureTrail();
+    else if (this.questNav.active && !this.questNav.walking) this.questNav.stop();
+  }
+
   private persistSettings() {
     SaveSystem.saveSettings({
       quality: this.pipeline.quality,
       muted: this.audio.muted,
       dayNight: this.dayNightMode,
+      autoTrail: this.autoTrail,
     });
   }
 
@@ -190,6 +203,7 @@ export class Game {
     }
     if (cost > 0) p.gold -= cost;
     this.autoHunt.stop();
+    this.questNav.stop();
     p.intent = null;
     p.target = null;
     p.pos.set(x, this.terrain.getHeight(x, z), z);
@@ -304,20 +318,37 @@ export class Game {
         }
       }
     }
-    // Düşmanların üst üste binmesini önle
+    // Yalnızca birbirine yakın savaşan düşmanları karşılaştır.
+    const cellSize = 4;
+    type Entry = { enemy: Enemy; index: number; cx: number; cz: number };
+    const active: Entry[] = [];
+    const buckets = new Map<string, typeof active>();
     for (let i = 0; i < this.enemies.length; i++) {
-      const a = this.enemies[i];
-      if (!a.alive || a.isStone || (a.state !== 'chase' && a.state !== 'attack')) continue;
-      for (let j = i + 1; j < this.enemies.length; j++) {
-        const b = this.enemies[j];
-        if (!b.alive || b.isStone) continue;
-        const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z;
-        const min = a.radius + b.radius;
-        const d2 = dx * dx + dz * dz;
-        if (d2 < min * min && d2 > 1e-4) {
-          const d = Math.sqrt(d2), push = (min - d) * 0.5;
-          a.pos.x -= (dx / d) * push; a.pos.z -= (dz / d) * push;
-          b.pos.x += (dx / d) * push; b.pos.z += (dz / d) * push;
+      const enemy = this.enemies[i];
+      if (!enemy.alive || enemy.isStone) continue;
+      const cx = Math.floor(enemy.pos.x / cellSize), cz = Math.floor(enemy.pos.z / cellSize);
+      const entry = { enemy, index: i, cx, cz };
+      const key = `${cx},${cz}`;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(entry);
+      else buckets.set(key, [entry]);
+      if (enemy.state === 'chase' || enemy.state === 'attack') active.push(entry);
+    }
+    for (const { enemy: a, index, cx, cz } of active) {
+      for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) {
+        const bucket = buckets.get(`${cx + ox},${cz + oz}`);
+        if (!bucket) continue;
+        for (const entry of bucket) {
+          if (entry.index <= index) continue;
+          const b = entry.enemy;
+          const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z;
+          const min = a.radius + b.radius;
+          const d2 = dx * dx + dz * dz;
+          if (d2 < min * min && d2 > 1e-4) {
+            const d = Math.sqrt(d2), push = (min - d) * 0.5;
+            a.pos.x -= (dx / d) * push; a.pos.z -= (dz / d) * push;
+            b.pos.x += (dx / d) * push; b.pos.z += (dz / d) * push;
+          }
         }
       }
     }

@@ -69,9 +69,21 @@ kbd {
 .start-note { color: var(--muted); margin: 14px 0 0; font-size: 12px; }
 @media (max-width: 640px) { .classes { grid-template-columns: 1fr; } .class-card { min-height: 0; } }
 
+/* ---------------------------------------------------------------- Başlangıç rehberi */
+.tutorial { position: absolute; z-index: 12; right: 220px; bottom: 108px; width: min(360px, calc(100vw - 32px)); padding: 16px 18px;
+  background: var(--panel); border: 1px solid var(--gold-dim); border-radius: 7px; box-shadow: 0 12px 36px #000c; pointer-events: auto; }
+.tutorial-count { color: var(--gold); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
+.tutorial h3 { margin: 8px 0 5px; font: 600 17px var(--display); color: #f2d99d; }
+.tutorial p { margin: 0; color: var(--text); font-size: 12px; line-height: 1.55; }
+.tutorial-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; }
+@media (max-width: 800px) { .tutorial { right: 10px; bottom: 178px; } }
+@media (any-pointer: coarse) and (max-width: 640px) { .tutorial { left: 8px; right: 8px; bottom: calc(170px + env(safe-area-inset-bottom)); width: auto; padding: 12px 14px; } }
+
 /* ---------------------------------------------------------------- HUD çerçeveleri */
 .frame { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 20px #0008, inset 0 1px 0 #ffffff12; }
-.player-frame { top: 14px; left: 14px; display: flex; gap: 10px; padding: 8px 12px 8px 8px; width: 300px; }
+.hud-player-stack { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 6px; width: 300px; }
+.hud-player-stack .player-frame { position: static; width: 100%; }
+.player-frame { display: flex; gap: 10px; padding: 8px 12px 8px 8px; }
 .portrait { flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 35% 30%, #6a5126, #1c140a); border: 2px solid var(--gold); box-shadow: 0 0 12px #d9b56c44; }
 .portrait span { font: 700 21px var(--display); color: #fff3d0; }
 .pf-body { flex: 1; min-width: 0; }
@@ -91,10 +103,15 @@ kbd {
 .mm-ring canvas { width: 100%; height: 100%; display: block; }
 .mm-info { display: flex; justify-content: space-between; margin-top: 6px; padding: 3px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .mm-info span:first-child { color: var(--gold); }
-.tracker { position: absolute; top: 244px; right: 14px; width: 188px; padding: 8px 10px; background: linear-gradient(90deg, transparent, #000a); border-right: 2px solid var(--gold); text-align: right; text-shadow: 0 1px 3px #000; }
+.tracker { position: static; width: 100%; padding: 8px 10px; background: linear-gradient(90deg, #000a, transparent); border-left: 2px solid var(--gold); text-align: left; text-shadow: 0 1px 3px #000; }
 .tracker b { display: block; font: 600 13px var(--display); color: var(--gold); }
-.tracker span { font-size: 12px; }
+.tracker > span { font-size: 12px; }
 .tracker .done { color: #8fe08a; }
+.tracker .tr-status { display: block; min-height: 12px; margin-top: 2px; font-size: 10px; color: #d8c596; }
+.tracker .tr-btns { display: flex; gap: 5px; margin-top: 6px; }
+.tracker .tr-btns button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 6px; font-size: 11px; }
+.tracker .tr-btns button svg { flex: none; width: 13px; height: 13px; }
+.tracker .tr-btns button.on { border-color: var(--gold); background: linear-gradient(#6a5324, #3a2c12); color: #ffe9a8; box-shadow: 0 0 10px #d9b56c33; }
 
 .log { position: absolute; left: 14px; bottom: 16px; width: min(380px, 40vw); display: flex; flex-direction: column; gap: 2px; }
 .log .line { padding: 2px 8px; font-size: 12px; background: linear-gradient(90deg, #000b, transparent); border-radius: 2px; text-shadow: 0 1px 2px #000; transition: opacity 1.5s; }
@@ -134,14 +151,15 @@ kbd {
   .touch-controls { display: block; }
 }
 @media (any-pointer: coarse) and (max-width: 640px) {
-  .player-frame { top: 8px; left: 8px; width: min(230px, 58vw); padding: 6px; gap: 7px; }
+  .hud-player-stack { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); width: min(230px, calc(100vw - 120px)); gap: 5px; }
+  .player-frame { padding: 6px; gap: 7px; }
   .portrait { width: 42px; height: 42px; }
   .portrait span { font-size: 16px; }
   .mm-wrap { top: 8px; right: 8px; width: 96px; }
   .mm-ring { width: 96px; height: 96px; }
   .mm-info { font-size: 9px; padding: 2px 5px; }
-  .tracker { top: 138px; right: 8px; width: 152px; padding: 5px 7px; }
-  .target-frame { top: 74px; width: min(220px, 62vw); }
+  .tracker { padding: 5px 7px; }
+  .target-frame { top: auto; bottom: calc(220px + env(safe-area-inset-bottom)); width: min(220px, 62vw); }
   .bottom { width: min(96vw, 420px); bottom: calc(6px + env(safe-area-inset-bottom)); }
   .hotbar { gap: 3px; padding: 4px; }
   .hb { width: clamp(38px, 10vw, 46px); height: clamp(38px, 10vw, 46px); padding: 6px; }
@@ -445,6 +463,7 @@ kbd {
 .reward { margin: 5px 0; line-height: 1.5; }
 .reward b { color: var(--gold); }
 .btns { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+.btns .btn-ic { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; }
 .seg { display: flex; gap: 0; }
 .seg button { flex: 1; border-radius: 0; }
 .seg button:first-child { border-radius: 4px 0 0 4px; } .seg button:last-child { border-radius: 0 4px 4px 0; }

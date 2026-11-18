@@ -34,18 +34,37 @@ export class UI {
   private skillEls: { root: HTMLElement; cd: HTMLElement; cdText: HTMLElement }[] = [];
   private hurt = 0;
   private slow = 0;
+  private tutorialStep = 0;
+  private readonly tutorialSteps = [
+    { title: 'Diyarı keşfet', text: 'WASD ile yürü, Shift ile hızlan. Zemine tıklayarak da gideceğin yeri seçebilirsin. Dokunmatik ekranda sol çubuğu kullan.' },
+    { title: 'Hedef al ve savaş', text: 'Bir düşmana tıklayarak hedef seç; Tab ile yakındaki hedefler arasında geçiş yap. Boşluk ile saldır veya dokunmatik ekrandaki Saldır düğmesine bas.' },
+    { title: 'Yeteneklerini kullan', text: '1–4 tuşları ya da kısayol çubuğu yeteneklerini kullanır. 5 ve 6 can ve mana iksiridir. Yetenekler mana harcar ve bekleme süresine sahiptir.' },
+    { title: 'İlk görevini al', text: 'Köyde Bilge Aksakal’a yaklaş ve E’ye bas. Görevi kabul et; hedefin ekranın sol üstündeki takip alanında görünür. Oradaki Rota düğmesi seni hedefe yürütür, İz düğmesi yere iz işaretleri koyar. İlerlemen tarayıcına kaydedilir.' },
+  ];
 
   constructor(private game: Game) {
     this.root.insertAdjacentHTML('beforeend', `
       <div id="overlay"></div>
       <div id="hud" class="hidden">
-        <div class="frame player-frame">
-          <div class="portrait"><span id="p-level">1</span></div>
-          <div class="pf-body">
-            <div class="pf-name" id="p-name"></div>
-            <div class="bar hp"><i id="p-hp"></i><span id="p-hp-t"></span></div>
-            <div class="bar mp"><i id="p-mp"></i><span id="p-mp-t"></span></div>
-            <div class="buffs" id="p-buffs"></div>
+        <div class="hud-player-stack">
+          <div class="frame player-frame">
+            <div class="portrait"><span id="p-level">1</span></div>
+            <div class="pf-body">
+              <div class="pf-name" id="p-name"></div>
+              <div class="bar hp"><i id="p-hp"></i><span id="p-hp-t"></span></div>
+              <div class="bar mp"><i id="p-mp"></i><span id="p-mp-t"></span></div>
+              <div class="buffs" id="p-buffs"></div>
+            </div>
+          </div>
+          <div class="tracker" id="tracker">
+            <b id="tr-title"></b>
+            <span id="tr-prog"></span>
+            <small class="tr-status" id="tr-status"></small>
+            <div class="tr-btns" id="tr-btns">
+              <button type="button" data-quest-route="walk" aria-pressed="false" title="Görev hedefine otomatik yürü">${icon('route')}<span>Rota</span></button>
+              <button type="button" data-quest-route="trail" aria-pressed="false" title="Hedefe giden yolu yerde işaretle">${icon('trail')}<span>İz</span></button>
+              <button type="button" data-quest-route="auto" aria-pressed="false" title="Görev zincirini otomatik yürüt: hedefe git, savaş, teslim et">${icon('sword')}<span>Oto</span></button>
+            </div>
           </div>
         </div>
         <div class="frame target-frame hidden" id="target">
@@ -56,7 +75,6 @@ export class UI {
           <div class="mm-ring"><canvas id="minimap" width="184" height="184"></canvas></div>
           <div class="mm-info"><span id="mm-clock"></span><span id="mm-pos"></span></div>
         </div>
-        <div class="tracker" id="tracker"></div>
         <div class="log" id="log"></div>
         <div class="bottom">
           <div class="hint" id="hint"></div>
@@ -80,13 +98,14 @@ export class UI {
       <div id="windows"></div>
       <div id="tooltip"></div>
       <div id="death" class="hidden"><div><h2>Yenildin</h2><p>Ruhun köye geri çağrılıyor…</p><button class="primary" id="respawn">Köyde Diril</button></div></div>
+      <div id="tutorial" class="tutorial hidden"></div>
       <div id="start" class="hidden"></div>
     `);
     this.hud = $('#hud');
     this.start = $('#start');
     this.death = $('#death');
     this.logEl = $('#log');
-    for (const id of ['p-level', 'p-name', 'p-hp', 'p-hp-t', 'p-mp', 'p-mp-t', 'p-buffs', 'target', 't-name', 't-hp', 't-hp-t', 'mm-clock', 'mm-pos', 'tracker', 'hint', 'p-exp', 'p-exp-t', 'fps', 'hurt', 'banner']) {
+    for (const id of ['p-level', 'p-name', 'p-hp', 'p-hp-t', 'p-mp', 'p-mp-t', 'p-buffs', 'target', 't-name', 't-hp', 't-hp-t', 'mm-clock', 'mm-pos', 'tracker', 'tr-title', 'tr-prog', 'tr-status', 'tr-btns', 'hint', 'p-exp', 'p-exp-t', 'fps', 'hurt', 'banner']) {
       this.el[id] = $(`#${id}`);
     }
     this.windows = new Windows(game, $('#windows'), $('#tooltip'));
@@ -108,9 +127,26 @@ export class UI {
       this.death.classList.add('hidden');
       game.player.respawn();
     });
+    $('#tutorial').addEventListener('click', (e) => {
+      const action = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tutorial]')?.dataset.tutorial;
+      if (!action) return;
+      if (action === 'skip') {
+        this.finishTutorial();
+      } else if (action === 'next') {
+        this.tutorialStep++;
+        if (this.tutorialStep >= this.tutorialSteps.length) this.finishTutorial();
+        else this.renderTutorial();
+      }
+    });
     $('.menu-btns', this.hud).addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
       if (b?.dataset.win) this.windows.toggle(b.dataset.win as any);
+    });
+    // Görev takipçisindeki Rota/İz/Oto düğmeleri
+    $('#tracker').addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-quest-route]');
+      const m = b?.dataset.questRoute;
+      if (game.started && (m === 'walk' || m === 'trail' || m === 'auto')) game.questNav.toggle(m);
     });
     $('#hotbar').addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
@@ -246,6 +282,29 @@ export class UI {
     this.el['pot-hp'] = $('#pot-hp');
     this.el['pot-mp'] = $('#pot-mp');
     this.syncAutoHuntButton();
+    this.showTutorial();
+  }
+
+  private showTutorial() {
+    try {
+      if (localStorage.getItem('gokdemir-tutorial-v1') === 'done') return;
+    } catch { /* Depolama kapalıysa bu oturumda rehberi göster. */ }
+    this.tutorialStep = 0;
+    this.renderTutorial();
+  }
+
+  private renderTutorial() {
+    const panel = $('#tutorial');
+    const step = this.tutorialSteps[this.tutorialStep];
+    panel.innerHTML = `<div class="tutorial-count">BAŞLANGIÇ REHBERİ · ${this.tutorialStep + 1} / ${this.tutorialSteps.length}</div>
+      <h3>${step.title}</h3><p>${step.text}</p><div class="tutorial-actions">
+      <button data-tutorial="skip">Rehberi atla</button><button class="primary" data-tutorial="next">${this.tutorialStep + 1 === this.tutorialSteps.length ? 'Bitir' : 'Devam'}</button></div>`;
+    panel.classList.remove('hidden');
+  }
+
+  private finishTutorial() {
+    $('#tutorial').classList.add('hidden');
+    try { localStorage.setItem('gokdemir-tutorial-v1', 'done'); } catch { /* Bu oturumda kapalı kalır. */ }
   }
 
   private syncAutoHuntButton() {
@@ -296,7 +355,7 @@ export class UI {
     if (inp.hit('KeyC')) this.windows.toggle('char');
     if (inp.hit('KeyJ')) this.windows.toggle('quest');
     if (inp.hit('KeyH')) g.autoHunt.toggle(p);
-    if (inp.hit('Escape') && !this.windows.closeTop()) this.windows.toggle('settings');
+    if (inp.hit('Escape') && !this.windows.closeTop()) { if (g.questNav.active) g.questNav.stop(); else this.windows.toggle('settings'); }
     if (inp.hit('KeyM')) g.audio.setMuted(!g.audio.muted);
 
     setText(this.el['p-level'], String(p.level));
@@ -345,12 +404,29 @@ export class UI {
       setText(this.el.fps, `${Math.round(g.fps)} FPS`);
 
       const q = g.quests.current;
-      const tr = this.el.tracker;
-      const html = !q ? '<b>Tüm görevler tamamlandı</b>'
-        : !g.quests.accepted ? `<b>${q.title}</b><span>Bilge Aksakal ile konuş</span>`
-        : g.quests.complete ? `<b>${q.title}</b><span class="done">Tamamlandı — Bilge Aksakal'a dön</span>`
-        : `<b>${q.title}</b><span>${q.targetName}: ${g.quests.progressNow()} / ${q.count}</span>`;
-      if ((tr as any)._h !== html) { (tr as any)._h = html; tr.innerHTML = html; }
+      const nav = g.questNav;
+      setText(this.el['tr-title'], q ? q.title : 'Tüm görevler tamamlandı');
+      const prog = !q ? ''
+        : !g.quests.accepted ? 'Bilge Aksakal ile konuş'
+        : g.quests.complete ? "Tamamlandı — Bilge Aksakal'a dön"
+        : `${q.targetName}: ${g.quests.progressNow()} / ${q.count}`;
+      setText(this.el['tr-prog'], prog);
+      const isDone = !!(q && g.quests.complete);
+      if ((this.el['tr-prog'] as any)._d !== isDone) { (this.el['tr-prog'] as any)._d = isDone; this.el['tr-prog'].classList.toggle('done', isDone); }
+      setText(this.el['tr-status'], nav.active ? nav.status : '');
+      const btns = this.el['tr-btns'];
+      if (btns) {
+        const hide = !q;
+        if ((btns as any)._h !== hide) { (btns as any)._h = hide; btns.classList.toggle('hidden', hide); }
+        for (const b of btns.querySelectorAll<HTMLButtonElement>('[data-quest-route]')) {
+          const on = nav.mode === b.dataset.questRoute;
+          if ((b as any)._on !== on) {
+            (b as any)._on = on;
+            b.classList.toggle('on', on);
+            b.setAttribute('aria-pressed', String(on));
+          }
+        }
+      }
 
       const buffs = p.buffs.map((b) => `<span>${SKILLS[b.id].name} ${Math.ceil(b.t)}s</span>`).join('');
       const be = this.el['p-buffs'];

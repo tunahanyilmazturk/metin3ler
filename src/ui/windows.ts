@@ -550,14 +550,22 @@ export class Windows {
             <div class="reward"><b>Hedef:</b> ${goalText}</div>${rewards}
             <div class="btns"><button class="primary" data-quest="accept">Kabul Et</button><button data-close="quest">Sonra</button></div>`;
         } else if (g.quests.complete) {
-          body.innerHTML = `${step}<h4>${q.title}</h4><p class="npc-say">“${q.done}”</p>${rewards}<div class="btns"><button class="primary" data-quest="turnin">Ödülü Al</button></div>`;
+          body.innerHTML = `${step}<h4>${q.title}</h4><p class="npc-say">“${q.done}”</p>${rewards}<div class="btns">
+            <button data-quest-route="walk" title="Bilge Aksakal'a otomatik yürü"><i class="btn-ic">${icon('route')}</i> Rota</button>
+            <button data-quest-route="trail" title="Yerde iz işaretleri göster"><i class="btn-ic">${icon('trail')}</i> İz</button>
+            <button data-quest-route="auto" title="Görev zincirini otomatik yürüt"><i class="btn-ic">${icon('sword')}</i> Oto</button>
+            <button class="primary" data-quest="turnin">Ödülü Al</button></div>`;
         } else {
           const now = g.quests.progressNow();
           const pct = Math.round((now / q.count) * 100);
           body.innerHTML = `${step}<h4>${q.title}</h4><p class="npc-say">“${q.text}”</p>
             <div class="reward"><b>İlerleme:</b> ${now} / ${q.count}</div>
             <div class="qbar"><i style="width:${pct}%"></i></div>${rewards}
-            <div class="btns"><button data-close="quest">Tamam</button></div>`;
+            <div class="btns">
+            <button data-quest-route="walk" title="Görev hedefine otomatik yürü"><i class="btn-ic">${icon('route')}</i> Rota</button>
+            <button data-quest-route="trail" title="Yerde iz işaretleri göster"><i class="btn-ic">${icon('trail')}</i> İz</button>
+            <button data-quest-route="auto" title="Görev zincirini otomatik yürüt: hedefe git, savaş, teslim et"><i class="btn-ic">${icon('sword')}</i> Oto</button>
+            <button data-close="quest">Tamam</button></div>`;
         }
         break;
       }
@@ -577,6 +585,9 @@ export class Windows {
           <p class="day-night-help">${dayModeHelp[g.dayNightMode]}</p>
           <h4>Ses</h4>
           <div class="seg"><button data-mute="0" class="${g.audio.muted ? '' : 'on'}">Açık</button><button data-mute="1" class="${g.audio.muted ? 'on' : ''}">Kapalı</button></div>
+          <h4>Görev İzi</h4>
+          <div class="seg"><button data-autotrail="1" class="${g.autoTrail ? 'on' : ''}">Otomatik Açık</button><button data-autotrail="0" class="${g.autoTrail ? '' : 'on'}">Kapalı</button></div>
+          <p class="day-night-help">Görev hedefine giden yolu her zaman yerde işaretler. Takip alanındaki İz düğmesiyle geçerli görev için kapatabilirsin.</p>
           <h4>Kontroller</h4>
           <div class="keys">
             <div><kbd>W A S D</kbd> Hareket</div><div><kbd>Shift</kbd> Koş</div>
@@ -779,6 +790,7 @@ export class Windows {
       else if (d.upgrade !== undefined && this.smithRef) {
         g.economy.upgrade(this.smithRef);
       }
+      else if (d.questRoute !== undefined) { g.questNav.toggle(d.questRoute as 'walk' | 'trail' | 'auto'); this.close('quest'); }
       else if (d.quest === 'accept') { g.quests.accept(); this.close('quest'); }
       else if (d.quest === 'turnin') { g.quests.turnIn(); this.render('quest'); }
       else if (d.quality) { g.setQuality(d.quality as Quality); this.render('settings'); }
@@ -786,9 +798,10 @@ export class Windows {
       else if (d.autoToggle !== undefined) { g.autoHunt.toggle(p); this.render('autohunt'); }
       else if (d.mute) {
         g.audio.setMuted(d.mute === '1');
-        SaveSystem.saveSettings({ quality: g.pipeline.quality, muted: g.audio.muted, dayNight: g.dayNightMode });
+        SaveSystem.saveSettings({ quality: g.pipeline.quality, muted: g.audio.muted, dayNight: g.dayNightMode, autoTrail: g.autoTrail });
         this.render('settings');
       }
+      else if (d.autotrail !== undefined) { g.setAutoTrail(d.autotrail === '1'); this.render('settings'); }
       else if (d.save !== undefined) { g.saveNow(); g.events.emit('log', { msg: 'Oyun kaydedildi.', cls: 'good' }); }
       else if (d.reset !== undefined) {
         if (confirm('Karakterin kalıcı olarak silinecek. Emin misin?')) {

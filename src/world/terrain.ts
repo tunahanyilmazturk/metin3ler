@@ -14,7 +14,7 @@ export class Terrain {
   dirt = new Float32Array(N * N);
   /** Çim yoğunluğu (0-1) */
   grass = new Float32Array(N * N);
-  mesh!: THREE.Mesh;
+  mesh = new THREE.Group();
   /** R: yükseklik, G: çim yoğunluğu — çim shader'ı tarafından örneklenir */
   heightTex!: THREE.DataTexture;
   private noise = new Noise(2024);
@@ -183,9 +183,46 @@ export class Terrain {
         `);
     };
 
-    this.mesh = new THREE.Mesh(geo, mat);
-    this.mesh.receiveShadow = true;
-    this.mesh.castShadow = true;
+    // Ağı ~50 hücrelik parçalara bölmek ana ve gölge frustum'larında doğal
+    // kırpma sağlar. Normaller bütün ızgaradan kopyalandığı için parça
+    // dikişlerinde görünüm değişmez.
+    const chunkCells = 50;
+    const normals = geo.attributes.normal.array as Float32Array;
+    for (let z = 0; z < N - 1; z += chunkCells) {
+      for (let x = 0; x < N - 1; x += chunkCells) {
+        const width = Math.min(chunkCells, N - 1 - x), depth = Math.min(chunkCells, N - 1 - z);
+        const stride = width + 1, count = stride * (depth + 1);
+        const chunk = new THREE.BufferGeometry();
+        for (const [name, source, size] of [
+          ['position', pos, 3],
+          ['normal', normals, 3],
+          ['uv', uv, 2],
+          ['aDirt', this.dirt, 1],
+        ] as const) {
+          const attribute = new Float32Array(count * size);
+          for (let row = 0; row <= depth; row++) {
+            const start = ((z + row) * N + x) * size;
+            attribute.set(source.subarray(start, start + stride * size), row * stride * size);
+          }
+          chunk.setAttribute(name, new THREE.BufferAttribute(attribute, size));
+        }
+        const indices = new Uint16Array(width * depth * 6);
+        let offset = 0;
+        for (let row = 0; row < depth; row++) {
+          for (let col = 0; col < width; col++) {
+            const a = row * stride + col, b = a + 1, c = a + stride, d = c + 1;
+            indices[offset++] = a; indices[offset++] = c; indices[offset++] = b;
+            indices[offset++] = b; indices[offset++] = c; indices[offset++] = d;
+          }
+        }
+        chunk.setIndex(new THREE.BufferAttribute(indices, 1));
+        chunk.computeBoundingSphere();
+        const mesh = new THREE.Mesh(chunk, mat);
+        mesh.receiveShadow = mesh.castShadow = true;
+        this.mesh.add(mesh);
+      }
+    }
+    geo.dispose();
 
     // Çim shader'ı için yükseklik + yoğunluk dokusu
     const data = new Uint16Array(N * N * 4);
