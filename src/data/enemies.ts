@@ -23,7 +23,7 @@ export interface EnemyDef {
 const defs: EnemyDef[] = [
   { id: 'wolf', name: 'Bozkurt', level: 2, hp: 85, atk: 15, def: 2, exp: 20, gold: [6, 16], speed: 5.4, aggro: 5, range: 1.9, attackCd: 1.5, radius: 0.6,
     drops: [{ id: 'pelt', chance: 0.6 }, { id: 'hp1', chance: 0.14 }, { id: 'boots1', chance: 0.03 }, { id: 'sword1', chance: 0.02 }, { id: 'club1', chance: 0.02 }, { id: 'ring1', chance: 0.015 }], respawn: 22 },
-  { id: 'alpha_wolf', name: 'Sürü Lideri', level: 6, hp: 380, atk: 34, def: 6, exp: 110, gold: [40, 80], speed: 6, aggro: 14, range: 2.4, attackCd: 1.4, radius: 0.9, boss: true,
+  { id: 'alpha_wolf', name: 'Sürü Lideri', level: 6, hp: 820, atk: 34, def: 6, exp: 110, gold: [40, 80], speed: 6, aggro: 14, range: 2.4, attackCd: 1.4, radius: 0.9, boss: true,
     drops: [{ id: 'pelt', chance: 1 }, { id: 'neck1', chance: 0.2 }, { id: 'helm1', chance: 0.25 }, { id: 'hp1', chance: 0.6 }, { id: 'armor2', chance: 0.08 }, { id: 'hp2', chance: 0.15 }], respawn: 70 },
   { id: 'boar', name: 'Yaban Domuzu', level: 7, hp: 240, atk: 36, def: 8, exp: 62, gold: [18, 38], speed: 5, aggro: 9, range: 2.0, attackCd: 1.7, radius: 0.75,
     drops: [{ id: 'tusk', chance: 0.45 }, { id: 'hp1', chance: 0.18 }, { id: 'ring1', chance: 0.04 }, { id: 'armor2', chance: 0.025 }, { id: 'helm1', chance: 0.05 }], respawn: 26 },
@@ -33,7 +33,7 @@ const defs: EnemyDef[] = [
     drops: [{ id: 'medal', chance: 0.55 }, { id: 'hp2', chance: 0.2 }, { id: 'mp2', chance: 0.12 }, { id: 'hp3', chance: 0.05 }, { id: 'sword2', chance: 0.03 }, { id: 'spear2', chance: 0.03 }, { id: 'club2', chance: 0.03 }, { id: 'spear1', chance: 0.04 }, { id: 'ring2', chance: 0.03 }, { id: 'neck2', chance: 0.02 }, { id: 'bracelet2', chance: 0.04 }, { id: 'earring2', chance: 0.04 }], respawn: 30 },
   { id: 'bandit_chief', name: 'Haydut Reisi Karaca', level: 18, hp: 3200, atk: 120, def: 32, exp: 1400, gold: [500, 900], speed: 5.4, aggro: 16, range: 2.8, attackCd: 1.4, radius: 0.75, boss: true,
     drops: [{ id: 'armor3', chance: 0.5 }, { id: 'neck2', chance: 0.4 }, { id: 'crystal', chance: 1 }, { id: 'hp2', chance: 1 }, { id: 'hp3', chance: 0.4 }, { id: 'medal', chance: 1 }, { id: 'sword3', chance: 0.12 }, { id: 'spear3', chance: 0.12 }, { id: 'club3', chance: 0.12 }, { id: 'spear2', chance: 0.15 }, { id: 'helm3', chance: 0.2 }, { id: 'boots3', chance: 0.15 }, { id: 'ring3', chance: 0.08 }], respawn: 150 },
-  { id: 'golem', name: 'Taş Muhafız', level: 22, hp: 1500, atk: 135, def: 48, exp: 520, gold: [120, 220], speed: 3.8, aggro: 12, range: 3.0, attackCd: 2.1, radius: 1.0,
+  { id: 'golem', name: 'Taş Muhafız', level: 22, hp: 990, atk: 135, def: 48, exp: 520, gold: [120, 220], speed: 3.8, aggro: 12, range: 3.0, attackCd: 2.1, radius: 1.0,
     drops: [{ id: 'core', chance: 0.4 }, { id: 'hp2', chance: 0.25 }, { id: 'hp3', chance: 0.1 }, { id: 'helm3', chance: 0.04 }, { id: 'boots3', chance: 0.04 }, { id: 'sword3', chance: 0.02 }, { id: 'spear3', chance: 0.02 }, { id: 'club3', chance: 0.02 }, { id: 'spear2', chance: 0.025 }, { id: 'armor4', chance: 0.02 }, { id: 'neck3', chance: 0.02 }, { id: 'ring3', chance: 0.015 }, { id: 'shield3', chance: 0.03 }], respawn: 40 },
   { id: 'ogre', name: 'Kara Dev Gorvak', level: 30, hp: 14000, atk: 230, def: 70, exp: 9000, gold: [3000, 5000], speed: 4.4, aggro: 20, range: 4.4, attackCd: 2.2, radius: 1.5, boss: true,
     drops: [{ id: 'ogrehorn', chance: 1 }, { id: 'armor4', chance: 0.6 }, { id: 'ring3', chance: 0.6 }, { id: 'sword4', chance: 0.3 }, { id: 'spear4', chance: 0.3 }, { id: 'club4', chance: 0.3 }, { id: 'spear3', chance: 0.35 }, { id: 'armor5', chance: 0.2 }, { id: 'armor6', chance: 0.12 }, { id: 'warplate', chance: 0.1 }, { id: 'sword5', chance: 0.1 }, { id: 'spear5', chance: 0.1 }, { id: 'club5', chance: 0.1 }, { id: 'helm4', chance: 0.18 }, { id: 'boots4', chance: 0.18 }, { id: 'neck4', chance: 0.12 }, { id: 'ring4', chance: 0.12 }, { id: 'shield4', chance: 0.04 }, { id: 'earring3', chance: 0.04 }, { id: 'bracelet3', chance: 0.04 }, { id: 'belt3', chance: 0.04 }, { id: 'crystal', chance: 1 }], respawn: 300 },
@@ -47,7 +47,7 @@ const defs: EnemyDef[] = [
     drops: [{ id: 'hp2', chance: 0.14 }, { id: 'boots2', chance: 0.04 }, { id: 'sword2', chance: 0.02 }, { id: 'spear2', chance: 0.02 }, { id: 'neck1', chance: 0.025 }], respawn: 32 },
   { id: 'nightwolf', name: 'Kara Kurt', level: 16, hp: 780, atk: 95, def: 24, exp: 260, gold: [70, 130], speed: 6.2, aggro: 13, range: 2.1, attackCd: 1.4, radius: 0.7,
     drops: [{ id: 'pelt', chance: 0.5 }, { id: 'hp2', chance: 0.16 }, { id: 'sword3', chance: 0.03 }, { id: 'spear3', chance: 0.03 }, { id: 'ring2', chance: 0.04 }, { id: 'armor3', chance: 0.02 }], respawn: 32 },
-  { id: 'scorpion', name: 'Çöl Akrebi', level: 19, hp: 1100, atk: 115, def: 42, exp: 380, gold: [90, 160], speed: 4.6, aggro: 10, range: 1.9, attackCd: 1.7, radius: 0.85,
+  { id: 'scorpion', name: 'Çöl Akrebi', level: 19, hp: 865, atk: 115, def: 42, exp: 380, gold: [90, 160], speed: 4.6, aggro: 10, range: 1.9, attackCd: 1.7, radius: 0.85,
     drops: [{ id: 'hp3', chance: 0.1 }, { id: 'mp3', chance: 0.08 }, { id: 'helm3', chance: 0.03 }, { id: 'club3', chance: 0.02 }, { id: 'ring3', chance: 0.02 }, { id: 'armor4', chance: 0.01 }], respawn: 36 },
 
   // Bölge baskınları

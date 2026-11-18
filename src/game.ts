@@ -311,12 +311,14 @@ export class Game {
     const p = this.player;
     const diff = p.level - e.def.level;
     const scale = diff > 10 ? 0.25 : diff > 6 ? 0.6 : 1;
-    this.events.emit('log', { msg: `${e.def.name} yenildi. +${Math.round(e.def.exp * scale)} tecrübe`, cls: e.def.boss || e.isStone ? 'gold' : '' });
+    // Destek petlerinin tecrübe bonusu dahil
+    const expGain = Math.round(e.def.exp * scale * (1 + p.pets.bonus.expPct));
+    this.events.emit('log', { msg: `${e.def.name} yenildi. +${expGain} tecrübe`, cls: e.def.boss || e.isStone ? 'gold' : '' });
     this.loot.dropFor(e);
     this.spawner.onDeath(e);
     if (p.target === e) p.target = null;
     this.events.emit('enemyKilled', e);
-    p.gainExp(Math.round(e.def.exp * scale));
+    p.gainExp(expGain);
   }
 
   /** Ekran konumuna en yakın düşmanı/NPC'yi bulur. */

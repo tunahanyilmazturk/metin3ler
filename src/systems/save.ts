@@ -4,6 +4,7 @@ import { EQUIP_SLOTS, ITEMS, MAX_PLUS, isEquip } from '../data/items';
 import type { ItemStack } from '../data/items';
 import { QUESTS } from '../data/quests';
 import { HORSES } from '../data/horses';
+import { PETS, PET_SLOTS } from '../data/pets';
 import { INVENTORY_TOTAL_SLOTS } from '../data/inventory';
 import { DAY_NIGHT_MODES } from '../data/settings';
 import type { DayNightMode } from '../data/settings';
@@ -68,6 +69,22 @@ function isPlayerSave(value: unknown): value is PlayerSave {
   const stats = value.stats;
   if (!isRecord(stats) || !STAT_KEYS.every((key) => Number.isInteger(stats[key]) && (stats[key] as number) >= 0)) return false;
   if (value.horse !== undefined && value.horse !== null && (typeof value.horse !== 'string' || !Object.hasOwn(HORSES, value.horse))) return false;
+  const mounts = value.mounts;
+  if (mounts !== undefined) {
+    if (!isRecord(mounts) || !Array.isArray(mounts.owned)) return false;
+    if (!mounts.owned.every((id) => typeof id === 'string' && Object.hasOwn(HORSES, id))) return false;
+    if (!(mounts.active === null || (typeof mounts.active === 'string' && mounts.owned.includes(mounts.active)))) return false;
+  }
+  const pets = value.pets;
+  if (pets !== undefined) {
+    if (!isRecord(pets) || !Array.isArray(pets.owned) || !Array.isArray(pets.active)) return false;
+    for (const o of pets.owned) {
+      if (!isRecord(o) || typeof o.id !== 'string' || !Object.hasOwn(PETS, o.id) || !Array.isArray(o.bag)) return false;
+      if (o.bag.length > (PETS[o.id].bag ?? 0) || !o.bag.every((s) => s === null || isItemStack(s))) return false;
+    }
+    const ids = pets.owned.map((o) => (o as { id: string }).id);
+    if (pets.active.length > PET_SLOTS || !pets.active.every((id) => id === null || (typeof id === 'string' && ids.includes(id)))) return false;
+  }
   if (!Array.isArray(value.inv) || value.inv.length > INVENTORY_TOTAL_SLOTS || !value.inv.every((item) => item === null || isItemStack(item))) return false;
   const hotbar = value.hotbar;
   if (hotbar !== undefined && (!Array.isArray(hotbar) || hotbar.length > HOTBAR_SLOTS || !hotbar.every(isHotbarEntry))) return false;
@@ -121,6 +138,11 @@ export function migrateSaveData(raw: unknown): unknown {
   if (!isRecord(raw) || !isRecord(raw.player)) return raw;
   const p = raw.player;
   const player: Record<string, unknown> = { ...p, cls: 'warrior' };
+  // Eski tek at kaydı → binek listesi
+  if (typeof p.horse === 'string' && p.mounts === undefined) {
+    player.mounts = Object.hasOwn(HORSES, p.horse) ? { owned: [p.horse], active: p.horse } : { owned: [], active: null };
+    delete player.horse;
+  }
   if (Array.isArray(p.inv)) player.inv = p.inv.map(migrateItemRef);
   if (isRecord(p.equip)) player.equip = Object.fromEntries(Object.entries(p.equip).map(([slot, item]) => [slot, migrateItemRef(item)]));
   if (Array.isArray(p.hotbar)) player.hotbar = p.hotbar.map((e) => (isRecord(e) && e.t === 'item' ? migrateItemRef(e) : e));

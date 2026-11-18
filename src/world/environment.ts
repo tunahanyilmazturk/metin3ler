@@ -110,7 +110,8 @@ export class Environment {
 
   update(dt: number, focus: THREE.Vector3, force = false) {
     // Gölge haritası her 3 karede bir yenilenir (güneş yavaş hareket ettiği için görünmez)
-    this.renderer.shadowMap.needsUpdate = this.shadowFrame++ % 3 === 0;
+    // Bekleyen bir güncellemeyi ezme (ör. kalite değişimi); harita henüz yoksa mutlaka çiz
+    if (this.shadowFrame++ % 3 === 0 || !this.sun.shadow.map) this.renderer.shadowMap.needsUpdate = true;
     if (this.mode === 'cycle') {
       // 1 oyun saati ≈ 50 sn; gece iki kat hızlı geçer
       const night = this.time > 20.5 || this.time < 4.5;

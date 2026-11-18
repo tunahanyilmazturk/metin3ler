@@ -63,28 +63,6 @@ export function renderInn(w: Windows, body: HTMLElement) {
       ${activeFood ? `<p class="dim-note">Yeni bir yemek mevcut etkiyi yeniler; aynı anda bir han yemeği etkili olur.</p>` : ''}`;
 }
 
-export function renderStable(w: Windows, body: HTMLElement) {
-  const g = w.game, p = g.player;
-    const cur = p.horseDef;
-    body.innerHTML = `<p class="npc-say">“Ahhırım diyarın en iyi taylarıyla dolu. Bir at seç; bineğin hem yoldaşın hem de gururun olur. <kbd>R</kbd> ile istediğin an binip inebilirsin.”</p>
-      ${cur ? `<div class="stable-status">
-        <div class="nm"><b>${cur.name}</b><small>Hız bonusu: +%${Math.round((cur.speed - 1) * 100)}${p.mounted ? ' · şu an sırtındasın' : ''}</small></div>
-        <button class="${p.mounted ? 'danger' : 'primary'}" data-mount>${p.mounted ? 'İn' : 'Bin'} <small>(R)</small></button>
-      </div>` : '<p class="dim-note">Henüz bir atın yok. Aşağıdan bir binek satın al.</p>'}
-      <h4>Satılık Binekler</h4>
-      <div class="travel-list">${Object.values(HORSES).map((h) => {
-        const owned = p.horseId === h.id;
-        return `<div class="travel-row ${owned ? 'active' : ''}">
-          <div class="nm"><b>${h.name}</b><small>${h.desc} — +%${Math.round((h.speed - 1) * 100)} hız</small></div>
-          ${owned
-            ? '<span class="price">Sahipsin</span><button disabled>—</button>'
-            : `<span class="price ${p.gold < h.cost ? 'no' : ''}">${h.cost.toLocaleString('tr-TR')}</span>
-               <button data-horse-buy="${h.id}" ${p.gold < h.cost ? 'disabled' : ''}>${p.horseId ? 'Değiştir' : 'Satın Al'}</button>`}
-        </div>`;
-      }).join('')}</div>
-      <p class="dim-note">Atın ölümsüzdür ve her yere girer; savaşta üstünden atlamazsın. Yeni at alınca eskisi yerine geçer.</p>`;
-}
-
 export function renderSmith(w: Windows, body: HTMLElement) {
   const g = w.game, p = g.player;
     const s = w.smithRef ? g.economy.resolve(w.smithRef) : null;

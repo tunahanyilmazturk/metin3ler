@@ -21,17 +21,19 @@ import { icon } from './icons';
 import { renderInventory, renderVault } from './panels/inventory';
 import { renderCharacter } from './panels/character';
 import { renderShop } from './panels/shop';
-import { renderTravel, renderInn, renderStable, renderSmith } from './panels/services';
+import { renderTravel, renderInn, renderSmith } from './panels/services';
+import { renderStable } from './panels/stable';
+import { renderPets } from './panels/pets';
 import { renderQuest } from './panels/quest';
 import { renderSettings } from './panels/settingsMenu';
 import { renderAutoHunt } from './panels/settings';
 
 export type SettingsTab = 'graphics' | 'sound' | 'game' | 'controls' | 'system';
-export type WinName = 'inv' | 'char' | 'shop' | 'smith' | 'quest' | 'settings' | 'autohunt' | 'vault' | 'travel' | 'inn' | 'stable';
+export type WinName = 'inv' | 'char' | 'shop' | 'smith' | 'quest' | 'settings' | 'autohunt' | 'vault' | 'travel' | 'inn' | 'stable' | 'pets';
 
 const TITLES: Record<WinName, string> = {
   inv: 'Envanter', char: 'Karakter', shop: 'Tüccar Sevinç', smith: 'Demirci Bora', quest: 'Bilge Aksakal', settings: 'Ayarlar', autohunt: 'Oto Av',
-  vault: 'Kasadar Asude', travel: 'Rehber Davut', inn: 'Hancı Gülsüm', stable: 'Seyis Rahmi',
+  vault: 'Kasadar Asude', travel: 'Rehber Davut', inn: 'Hancı Gülsüm', stable: 'Seyis Rahmi', pets: 'Evcil Hayvanlar',
 };
 
 /** Oyun pencereleri: envanter, karakter, dükkân, demirci, görev ve ayarlar. */
@@ -230,6 +232,7 @@ export class Windows {
       case 'travel': renderTravel(this, body); break;
       case 'inn': renderInn(this, body); break;
       case 'stable': renderStable(this, body); break;
+      case 'pets': renderPets(this, body); break;
       case 'smith': renderSmith(this, body); break;
       case 'quest': renderQuest(this, body); break;
       case 'settings': renderSettings(this, body); break;
@@ -358,17 +361,13 @@ export class Windows {
         const ex = EXCHANGES[Number(d.exchange)];
         if (ex) g.economy.exchange(ex.give, ex.get);
       }
-      else if (d.horseBuy) {
-        const h = HORSES[d.horseBuy];
-        if (h && p.gold >= h.cost && p.horseId !== h.id) {
-          p.gold -= h.cost;
-          p.horseId = h.id;
-          if (p.mounted) p.dismount(true);
-          g.audio.coin();
-          g.events.emit('log', { msg: `${h.name} senin oldu! R ile binip inebilirsin.`, cls: 'gold' });
-          g.events.emit('changed');
-        }
-      }
+      else if (d.petBuy) { p.pets.buy(d.petBuy); }
+      else if (d.petEquip) { p.pets.equip(d.petEquip); }
+      else if (d.petUnequip) { p.pets.unequip(d.petUnequip); }
+      else if (d.petTake) { const [id, idx] = d.petTake.split(':'); p.pets.takeFromBag(id, Number(idx)); }
+      else if (d.petTakeAll) { p.pets.takeAll(d.petTakeAll); }
+      else if (d.horseBuy) { p.mounts.buy(d.horseBuy); this.render('stable'); }
+      else if (d.horseSelect) { p.mounts.select(d.horseSelect); this.render('stable'); }
       else if (d.mount !== undefined) { p.toggleMount(); this.render('stable'); }
       else if (d.stat) { p.addStat(d.stat as StatKey); g.audio.click(); }
       else if (d.buy) g.economy.buy(d.buy, e.shiftKey ? 10 : 1);

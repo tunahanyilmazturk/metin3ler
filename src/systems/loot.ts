@@ -4,7 +4,7 @@ import { ITEMS, ItemStack, RARITY_COLORS, itemLabel } from '../data/items';
 import type { Enemy } from '../entities/enemy';
 import type { Game } from '../game';
 
-interface Drop {
+export interface Drop {
   group: THREE.Group;
   gold: number;
   item: ItemStack | null;
@@ -98,6 +98,17 @@ export class Loot {
     g.events.emit('lootPicked', { gold: d.gold, item: d.item });
     g.events.emit('changed');
     return true;
+  }
+
+  /** Düşüşü dünyadan kaldırır (pet topladığında; ödülü toplayan taraf verir). */
+  takeDrop(d: Drop) {
+    const i = this.drops.indexOf(d);
+    if (i < 0) return;
+    const g = this.game;
+    g.scene.remove(d.group);
+    d.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) (m.material as THREE.Material).dispose(); });
+    this.drops.splice(i, 1);
+    g.events.emit('lootPicked', { gold: d.gold, item: d.item });
   }
 
   update(dt: number) {

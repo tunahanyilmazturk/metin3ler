@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { dampAngle, rand } from '../core/utils';
 import { ENEMIES, EnemyDef } from '../data/enemies';
+import { DIFFICULTY } from '../data/balance';
+/** Tüm düşmanların paylaştığı zemin halkası geometrisi. */const GROUND_RING = new THREE.RingGeometry(0.82, 1, 40).rotateX(-Math.PI / 2);
 import { createEnemyModel } from './creatures';
 import { CreatureModel, disposeModel } from './model';
 import type { Game } from '../game';
@@ -30,16 +32,45 @@ export class Enemy {
   private wander = new THREE.Vector3();
   private speedNow = 0;
   private wavesDone = 0;
+  /** Vuruş halkası: her vuruşta genişleyip söner. */
+  private hitRing: THREE.Mesh;
+  private hitT = 1;
+  /** Patronların sürekli altın aurası. */
+  private aura: THREE.Mesh | null = null;
+  private auraT = 0;
   private fxTimer = 0;
 
   constructor(private game: Game, public def: EnemyDef, x: number, z: number, public zone: SpawnZone | null) {
-    this.hp = this.maxHp = def.hp;
+    this.hp = this.maxHp = Math.round(def.hp * DIFFICULTY.enemyHp);
     this.isStone = !!def.stone;
     this.model = createEnemyModel(def.id, game.tex);
     this.pos.set(x, game.terrain.getHeight(x, z), z);
     this.home.copy(this.pos);
     this.model.root.position.copy(this.pos);
     game.scene.add(this.model.root);
+    // Zemin halkaları: vuruşta parlama, patronlarda kalıcı aura (malzeme paylaşımına dokunmaz)
+    this.hitRing = new THREE.Mesh(GROUND_RING, new THREE.MeshBasicMaterial({ color: 0xff7040, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    this.hitRing.position.y = 0.06;
+    this.model.root.add(this.hitRing);
+    if (def.boss) {
+      this.aura = new THREE.Mesh(GROUND_RING, new THREE.MeshBasicMaterial({ color: 0xffb050, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+      this.aura.position.y = 0.04;
+      this.aura.scale.setScalar(def.radius * 2.6);
+      this.model.root.add(this.aura);
+    }
+  }
+
+  /** Halka ve aura animasyonu: vuruşta genişleyip söner, patron aurası nabız atar. */
+  private updateRing(dt: number) {
+    this.hitT = Math.min(1, this.hitT + dt / 0.35);
+    const k = this.hitT;
+    const hm = this.hitRing.material as THREE.MeshBasicMaterial;
+    this.hitRing.scale.setScalar(this.def.radius * (1.5 + 1.1 * k));
+    hm.opacity = this.alive ? 0.85 * (1 - k) * (1 - k) : 0;
+    if (this.aura) {
+      this.auraT += dt;
+      (this.aura.material as THREE.MeshBasicMaterial).opacity = this.alive ? 0.22 + 0.12 * Math.sin(this.auraT * 2.5) : 0;
+    }
   }
 
   get alive() { return this.state !== 'dead'; }
@@ -66,6 +97,7 @@ export class Enemy {
     const g = this.game;
     const p = g.player;
     this.sinceHit += dt;
+    this.updateRing(dt);
     if (this.state === 'dead') {
       this.deadT += dt;
       this.model.update(dt, 0);
@@ -127,7 +159,7 @@ export class Enemy {
           this.yaw = dampAngle(this.yaw, Math.atan2(dx, dz), 10, dt);
           if (this.hitPending >= 0) {
             this.hitPending -= dt;
-            if (this.hitPending < 0 && dist < this.def.range + 1.3 && p.alive) p.takeDamage(this.def.atk, this);
+            if (this.hitPending < 0 && dist < this.def.range + 1.3 && p.alive) p.takeDamage(this.def.atk * DIFFICULTY.enemyAtk, this);
           } else if (!p.alive) {
             this.state = 'return';
           } else if (dist > this.def.range + 0.9) {
@@ -170,6 +202,7 @@ export class Enemy {
     const g = this.game;
     this.hp -= amount;
     this.sinceHit = 0;
+    this.hitT = 0;
     this.model.hit();
     if (opts.stun && !this.def.boss) this.stunned = Math.max(this.stunned, opts.stun);
     if (opts.slow) this.slowed = Math.max(this.slowed, opts.slow);

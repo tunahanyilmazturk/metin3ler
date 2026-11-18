@@ -65,6 +65,7 @@ export function renderAutoHunt(w: Windows, body: HTMLElement) {
         ${check('attackBosses', 'Patron düşmanlara saldır', s.attackBosses)}
         ${check('attackStones', 'Lanetli taşlara saldır', s.attackStones)}
         ${check('autoRespawn', 'Ölünce dirilip ava dön', s.autoRespawn)}
+        ${check('autoMount', 'Uzak yolda ata bin', s.autoMount)}
       </div>
       <div class="auto-thresholds">
         <label class="auto-setting-row"><span>Can iksiri eşiği</span>${select('hpThreshold', s.hpThreshold, AUTO_HUNT_THRESHOLDS)}</label>

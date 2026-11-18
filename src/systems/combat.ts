@@ -35,7 +35,7 @@ export class Combat {
   }
 
   /** Tek bir düşmana oyuncu hasarı uygular. */
-  hitEnemy(e: Enemy, mult: number, opts: { stun?: number; slow?: number } = {}) {
+  hitEnemy(e: Enemy, mult: number, opts: { stun?: number; slow?: number; pet?: boolean } = {}) {
     const g = this.game, p = g.player;
     const crit = Math.random() * 100 < p.crit;
     let dmg = p.atk * mult * rand(0.9, 1.1) - e.def.def * 0.6;
@@ -55,9 +55,10 @@ export class Combat {
       const nx = e.pos.x + (dx / d) * kb, nz = e.pos.z + (dz / d) * kb;
       if (g.terrain.walkable(nx, nz)) { e.pos.x = nx; e.pos.z = nz; }
     }
-    g.effects.flash(at, crit ? 0xffb050 : 0xff6a40, crit ? 22 : 9, 0.14);
+    // Pet vuruşları ekranı sarsmaz ve oyunu yavaşlatmaz
+    if (!opts.pet) g.effects.flash(at, crit ? 0xffb050 : 0xff6a40, crit ? 22 : 9, 0.14);
     e.damage(dmg, opts);
-    g.hitStop(!e.alive ? 0.11 : crit ? 0.085 : 0.045);
+    if (!opts.pet) g.hitStop(!e.alive ? 0.11 : crit ? 0.085 : 0.045);
   }
 
   /** Oyuncunun önündeki koni içindeki düşmanlara vurur; vurulan sayısını döndürür. */

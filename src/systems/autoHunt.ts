@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { Vector3 } from 'three';
+import { PETS } from '../data/pets';
 import type { Enemy } from '../entities/enemy';
 import type { Player } from '../entities/player';
 import type { Game } from '../game';
+import { Danger, assessDanger, isAggro, pickSkill, pickTarget, retreatPoint } from './huntAI';
 
-export type HuntPriority = 'near' | 'weak' | 'strong';
+export type HuntPriority = 'smart' | 'near' | 'weak' | 'strong';
 
 export interface AutoHuntSettings {
   radius: number;
@@ -19,6 +21,8 @@ export interface AutoHuntSettings {
   restBelow: number;
   priority: HuntPriority;
   autoRespawn: boolean;
+  /** Uzak yollarda (dirilme sonrası dönüş, görev yolu) otomatik ata bin. */
+  autoMount: boolean;
   skillMask: boolean[];
 }
 
@@ -40,6 +44,7 @@ const KEY = 'gokdemir-autohunt-v2';
 export const AUTO_HUNT_RADII = [8, 12, 16, 20, 24] as const;
 export const AUTO_HUNT_THRESHOLDS = [20, 30, 40, 50, 60, 70, 80] as const;
 export const AUTO_HUNT_PRIORITIES: [HuntPriority, string][] = [
+  ['smart', 'Akıllı (önerilen)'],
   ['near', 'En yakın'],
   ['weak', 'En zayıf'],
   ['strong', 'En güçlü'],
@@ -55,10 +60,16 @@ const DEFAULT_SETTINGS: AutoHuntSettings = {
   attackStones: false,
   preferAggro: true,
   restBelow: 0,
-  priority: 'near',
+  priority: 'smart',
   autoRespawn: false,
+  autoMount: true,
   skillMask: [true, true, true, true],
 };
+
+/** Toparlanma: kritik geri çekilmeden sonra yeni hedef almadan önce ulaşılacak can oranı. */
+const RECOVER_TO = 0.6;
+/** Bu mesafeden uzak dönüşlerde ata binilir (metre). */
+const MOUNT_DISTANCE = 25;
 
 /** Yerel tek oyunculu oto av: etkinleştirildiği noktanın çevresinde kalır. */
 export class AutoHunt {
@@ -73,9 +84,12 @@ export class AutoHunt {
   questStones = false;
   /** collectItems ayarından bağımsız ganimet toplama (topla görevleri). */
   forceCollect = false;
+  /** Son karar döngüsündeki tehlike düzeyi (arayüz ve günlük için). */
+  danger: Danger = 'safe';
 
+  /** Kritik geri çekilmeden sonra toparlanıyor mu. */
+  private recovering = false;
   private skillWait = 0;
-  private nextSkill = 0;
   private returning = false;
   private respawnTimer = -1;
   private potionWarnAt = -99;
@@ -119,6 +133,8 @@ export class AutoHunt {
     this.respawnTimer = -1;
     this.skillWait = 0;
     this.stuckT = 0;
+    this.recovering = false;
+    this.danger = 'safe';
     this.blacklist.clear();
     this.stats = { kills: 0, exp: 0, gold: 0, items: 0, started: this.game.time };
     this.lastPos.copy(pos);
@@ -179,6 +195,7 @@ export class AutoHunt {
       case 'attackStones':
       case 'preferAggro':
       case 'autoRespawn':
+      case 'autoMount':
         if (typeof value !== 'boolean') return;
         this.settings[key] = value;
         break;
@@ -239,6 +256,8 @@ export class AutoHunt {
         this.game.events.emit('log', { msg: 'Oto av: av alanına varıldı, av devam ediyor.', cls: 'good' });
       } else {
         this.tryPotion(player);
+        // Uzak dönüş yolunda ata bin
+        if (this.settings.autoMount && fromCenter > MOUNT_DISTANCE && !player.inCombat) player.mounts.autoMount();
         return { target: null, moveTo: { x: this.center.x, z: this.center.z }, attack: false };
       }
     }
@@ -264,6 +283,36 @@ export class AutoHunt {
     if (manualOverride) {
       this.setStatus('Elle kontrol');
       return null;
+    }
+
+    // Tehlike değerlendirmesi: yakında bize saldıran düşmanların toplam baskısı
+    const attackers = this.game.enemies.filter((e) => e.alive && !e.isStone && isAggro(e) &&
+      Math.hypot(e.pos.x - player.pos.x, e.pos.z - player.pos.z) < 10);
+    const danger = assessDanger(player, attackers, player.canUsePotion('hp'));
+    if (danger.level !== this.danger) {
+      if (danger.level === 'critical') this.game.events.emit('log', { msg: 'Oto av: tehlike! Geri çekiliyor.', cls: 'warn' });
+      this.danger = danger.level;
+    }
+    // Baskı altındaysa iksiri eşikten biraz önce iç
+    if (danger.level !== 'safe' && this.settings.usePotions && player.canUsePotion('hp') &&
+      player.hp / player.maxHp <= Math.min(0.9, this.settings.hpThreshold / 100 + 0.15)) player.usePotion('hp');
+    if (danger.level === 'critical') {
+      this.recovering = true;
+      const away = retreatPoint(player, attackers, this.center, this.settings.radius);
+      // Köşeye sıkıştıysa (kaçacak yer yok) kaçmak yerine savaşmaya devam et
+      if (Math.hypot(away.x - player.pos.x, away.z - player.pos.z) > 2) {
+        player.target = null;
+        this.setStatus('Geri çekiliyor');
+        return { target: null, moveTo: away, attack: false };
+      }
+    }
+    // Toparlanma: kimse saldırmıyorsa can yeterince dolana kadar yeni kavga başlatma
+    if (this.recovering) {
+      if (player.hp / player.maxHp >= RECOVER_TO) this.recovering = false;
+      else if (!attackers.length) {
+        this.setStatus('Toparlanıyor');
+        return { target: null, moveTo: null, attack: false };
+      }
     }
 
     const target = this.findTarget(player);
@@ -298,7 +347,8 @@ export class AutoHunt {
       return { target: null, moveTo: null, attack: false };
     }
 
-    if (this.settings.collectItems || this.forceCollect) {
+    // Destek peti çantasında yer varsa ganimeti o toplar; görev için toplama hep oyuncuda
+    if ((this.settings.collectItems && !this.petCollects(player)) || this.forceCollect) {
       const drop = this.game.loot.nearestDrop(player.pos, this.center, this.settings.radius);
       if (drop) {
         this.setStatus('Ganimet topluyor');
@@ -354,7 +404,8 @@ export class AutoHunt {
 
     // Önce bize saldıranlar (tercih edilirse)
     let pool = this.game.enemies.filter((e) => this.isAllowed(e, inFight));
-    if (this.settings.preferAggro) {
+    // Akıllı öncelikte saldıranları tercih etmek puanlamanın içinde; burada süzülmez
+    if (this.settings.preferAggro && this.settings.priority !== 'smart') {
       const aggro = pool.filter((e) => e.state === 'chase' || e.state === 'attack');
       if (aggro.length) pool = aggro;
     }
@@ -363,6 +414,8 @@ export class AutoHunt {
     const px = player.pos.x, pz = player.pos.z;
     const dist = (e: Enemy) => Math.hypot(e.pos.x - px, e.pos.z - pz);
     switch (this.settings.priority) {
+      case 'smart':
+        return pickTarget(pool, player, { enemies: this.game.enemies, radius: this.settings.radius, preferAggro: this.settings.preferAggro });
       case 'weak': return pool.reduce((a, b) => (a.hp / a.maxHp <= b.hp / b.maxHp ? a : b));
       case 'strong': return pool.reduce((a, b) => (a.def.level >= b.def.level ? a : b));
       default: return pool.reduce((a, b) => (dist(a) <= dist(b) ? a : b));
@@ -370,35 +423,22 @@ export class AutoHunt {
   }
 
   private trySkill(player: Player, target: Enemy) {
-    const skills = player.skills;
-    for (let offset = 0; offset < skills.length; offset++) {
-      const i = (this.nextSkill + offset) % skills.length;
-      if (!this.settings.skillMask[i]) continue;
-      const skill = skills[i];
-      if (player.level < skill.level || player.cooldowns[i] > 0 || player.mp < skill.mp) continue;
-      if (skill.type === 'dash') continue;
-      if (skill.type === 'buff' && player.buffs.some((buff) => buff.id === skill.id)) continue;
+    // Durum puanlaması: kalabalıkta alan, baskı altında güçlendirme, tek hedefte vuruş
+    const i = pickSkill(player.skills, {
+      level: player.level, mp: player.mp, cooldowns: player.cooldowns,
+      buffIds: player.buffs.map((b) => b.id), mask: this.settings.skillMask,
+    }, player, target, this.game.enemies, this.danger);
+    if (i < 0) return false;
+    player.useSkill(i);
+    return true;
+  }
 
-      const distance = Math.hypot(target.pos.x - player.pos.x, target.pos.z - player.pos.z);
-      let useful = false;
-      if (skill.type === 'aoe') {
-        useful = this.game.enemies.some((enemy) => enemy.alive &&
-          Math.hypot(enemy.pos.x - player.pos.x, enemy.pos.z - player.pos.z) <= (skill.radius ?? 0) + enemy.radius &&
-          Math.hypot(enemy.pos.x - this.center.x, enemy.pos.z - this.center.z) <= this.settings.radius);
-      } else if (skill.type === 'strike') {
-        useful = distance <= (skill.radius ?? player.attackRange) + target.radius;
-      } else if (skill.type === 'projectile' || skill.type === 'targetAoe') {
-        useful = distance <= 24;
-      } else if (skill.type === 'buff') {
-        useful = distance <= Math.max(6, this.settings.radius * 0.65);
-      }
-      if (!useful) continue;
-
-      player.useSkill(i);
-      this.nextSkill = (i + 1) % skills.length;
-      return true;
-    }
-    return false;
+  /** Kuşanılı destek petlerinden birinin çantasında boş yer var mı (ganimeti o toplar). */
+  private petCollects(player: Player) {
+    return player.pets.active.some((id) => {
+      if (!id || PETS[id].kind !== 'support') return false;
+      return player.pets.get(id)?.bag.includes(null) ?? false;
+    });
   }
 
   /** Av alanı sınırını arazi üzerinde gösteren altın halka. */
@@ -452,6 +492,7 @@ export class AutoHunt {
         restBelow: AUTO_HUNT_THRESHOLDS.includes(d.restBelow as typeof AUTO_HUNT_THRESHOLDS[number]) || d.restBelow === 0 ? d.restBelow as number : DEFAULT_SETTINGS.restBelow,
         priority: AUTO_HUNT_PRIORITIES.some(([k]) => k === d.priority) ? d.priority as HuntPriority : DEFAULT_SETTINGS.priority,
         autoRespawn: typeof d.autoRespawn === 'boolean' ? d.autoRespawn : DEFAULT_SETTINGS.autoRespawn,
+        autoMount: typeof d.autoMount === 'boolean' ? d.autoMount : DEFAULT_SETTINGS.autoMount,
         skillMask: mask,
       };
     } catch {

@@ -133,6 +133,7 @@ export function takeDamage(p: Player, raw: number) {
   const g = p.game;
   const dmg = Math.max(1, Math.round(raw * rand(0.88, 1.12) - p.def * 0.5));
   p.hp -= dmg;
+  p.mounts.interrupt();
   p.sinceCombat = 0;
   p.model.hit();
   g.audio.hurt();

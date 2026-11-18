@@ -5,8 +5,10 @@ import { EQUIP_SLOTS, EquipSlot, ITEMS, ItemStack, plusMult } from '../data/item
 import { SKILLS, SkillDef } from '../data/skills';
 import { INVENTORY_TOTAL_SLOTS, InvCell, isLink } from '../data/inventory';
 import { PLAYER_SPAWN, WORLD_HALF } from '../data/world';
-import { HORSES } from '../data/horses';
-import { Quadruped } from './creatures';
+import { MountSystem } from '../systems/mounts';
+import type { MountSave } from '../systems/mounts';
+import { PetSystem } from '../systems/pets';
+import type { PetSave } from '../systems/pets';
 import { Humanoid } from './humanoid';
 import { disposeModel } from './model';
 import * as combat from './playerCombat';
@@ -31,7 +33,10 @@ export interface PlayerSave {
   equip: Record<EquipSlot, ItemStack | null>;
   x: number;
   z: number;
+  /** Eski kayıtlar: tek at kimliği (yüklenirken mounts'a taşınır). */
   horse?: string | null;
+  mounts?: MountSave;
+  pets?: PetSave;
   hotbar?: (HotbarEntry | null)[];
 }
 
@@ -68,11 +73,10 @@ export class Player {
   alive = true;
   target: Enemy | null = null;
   intent: Intent = null;
-  /** Seyisten alınan binek ve biniş durumu. */
-  horseId: string | null = null;
-  mounted = false;
-  private horse: Quadruped | null = null;
-  private mountCd = 0;
+  /** Binek sistemi: sahip olunan atlar, aktif at, çağırma ve dayanıklılık (systems/mounts.ts). */
+  mounts!: MountSystem;
+  /** Evcil hayvan sistemi: iki slot, destek bonusları, çantalar, saldırı petleri (systems/pets.ts). */
+  pets!: PetSystem;
   cooldowns = [0, 0, 0, 0];
   buffs: Buff[] = [];
   /** 1–4 ve F1–F4 tuşlarına bağlı kısayol çubuğu (ilk 4 göz 1–4, son 4 göz F1–F4). */
@@ -99,10 +103,11 @@ export class Player {
   constructor(readonly game: Game, public name: string, clsId: ClassId, save?: PlayerSave) {
     this.cls = CLASSES[clsId];
     this.stats = { ...this.cls.stats };
+    this.pets = new PetSystem(this, save?.pets ?? null);
+    this.mounts = new MountSystem(this, save?.mounts ?? (save?.horse ? { owned: [save.horse], active: save.horse } : null));
     if (save) {
       this.level = save.level; this.exp = save.exp; this.statPoints = save.statPoints;
       this.stats = { ...save.stats }; this.gold = save.gold;
-      this.horseId = save.horse && Object.hasOwn(HORSES, save.horse) ? save.horse : null;
       this.inv = new Array(INV_SIZE).fill(null);
       save.inv.slice(0, INV_SIZE).forEach((item, i) => { if (item) inv.restoreStack(this, i, item); });
       this.equip = { ...this.equip, ...save.equip };
@@ -139,7 +144,7 @@ export class Player {
       stats: this.stats, gold: this.gold, hp: this.hp, mp: this.mp,
       inv: this.inv.map((c) => (c && isLink(c) ? null : c)) as (ItemStack | null)[], equip: this.equip,
       x: this.alive ? this.pos.x : PLAYER_SPAWN.x, z: this.alive ? this.pos.z : PLAYER_SPAWN.z,
-      horse: this.horseId, hotbar: this.hotbar,
+      mounts: this.mounts.serialize(), pets: this.pets.serialize(), hotbar: this.hotbar,
     };
   }
 
@@ -181,7 +186,16 @@ export class Player {
     this.def = Math.round((st.vit * 0.7 + this.level * 0.5 + eq.def) * (1 + b.def));
     this.crit = Math.min(60, 5 + st.dex * 0.35 + eq.crit + b.crit);
     this.moveSpeed = 6.4 * (1 + eq.speed / 100) * (1 + b.speed);
-    if (this.mounted && this.horseId) this.moveSpeed *= HORSES[this.horseId]?.speed ?? 1;
+    this.moveSpeed *= this.mounts?.speedMult ?? 1;
+    // Kuşanılı destek petlerinin pasif bonusları
+    const pb = this.pets?.bonus;
+    if (pb) {
+      this.maxHp += Math.round(pb.hp);
+      this.atk = Math.round(this.atk * (1 + pb.atkPct));
+      this.def = Math.round(this.def * (1 + pb.defPct));
+      this.crit = Math.min(60, this.crit + pb.crit);
+      this.moveSpeed *= 1 + pb.speedPct;
+    }
     this.atkSpeed = Math.min(1.6, 1 + st.dex * 0.006);
     this.hp = Math.min(this.hp, this.maxHp);
     this.mp = Math.min(this.mp, this.maxMp);
@@ -209,7 +223,7 @@ export class Player {
       scale: 1, bulk: 1.14,
     });
     this.model.root.position.copy(this.pos);
-    if (this.mounted) this.model.root.position.y += 0.66;
+    if (this.mounted) this.model.root.position.y += this.mounts.riderOffset;
     this.model.root.rotation.y = this.yaw;
     this.model.riding = this.mounted;
     this.game.scene.add(this.model.root);
@@ -227,47 +241,12 @@ export class Player {
     this.game.colliders.resolve(this.pos, this.radius);
   }
 
-  // ------------------------------------------------------------------ binek
+  // ------------------------------------------------------------------ binek (systems/mounts.ts)
 
-  get horseDef() { return this.horseId ? HORSES[this.horseId] : undefined; }
-
-  toggleMount() {
-    if (!this.horseId || !this.alive || this.mountCd > 0) return;
-    if (this.mounted) this.dismount(); else this.mount();
-  }
-
-  mount() {
-    const def = this.horseDef;
-    if (!def || this.mounted || !this.alive || this.mountCd > 0) return;
-    if (!this.horse) this.horse = new Quadruped(def.look, this.game.tex);
-    this.mounted = true;
-    this.mountCd = 0.5;
-    this.horse.revive();
-    this.horse.root.position.copy(this.pos);
-    this.horse.root.rotation.y = this.yaw;
-    this.game.scene.add(this.horse.root);
-    this.model.riding = true;
-    this.recalc();
-    this.game.audio.click();
-    this.game.effects.ring(this.pos.clone(), 1.6, 0xd0b070, 0.4);
-    this.game.events.emit('log', { msg: `${def.name} sırtındasın.`, cls: 'good' });
-    this.game.events.emit('changed');
-  }
-
-  dismount(silent = false) {
-    if (!this.mounted) return;
-    this.mounted = false;
-    this.mountCd = 0.5;
-    if (this.horse) this.game.scene.remove(this.horse.root);
-    this.model.riding = false;
-    this.model.root.position.copy(this.pos);
-    this.recalc();
-    if (!silent) {
-      this.game.audio.click();
-      this.game.events.emit('log', { msg: 'Attan indin.' });
-    }
-    this.game.events.emit('changed');
-  }
+  get mounted() { return this.mounts?.mounted ?? false; }
+  get horseDef() { return this.mounts.def; }
+  toggleMount() { this.mounts.toggle(); }
+  dismount(silent = false) { this.mounts.dismount(silent); }
 
   // ---------------------------------------------------------------- güncelleme
 
@@ -275,7 +254,7 @@ export class Player {
     const g = this.game;
     this.sinceCombat += dt;
     this.potionCd = Math.max(0, this.potionCd - dt);
-    this.mountCd = Math.max(0, this.mountCd - dt);
+    this.mounts.tick(dt);
     for (let i = 0; i < 4; i++) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     if (this.buffs.length) {
       let expired = false;
@@ -356,17 +335,21 @@ export class Player {
     } else if (waypoint) {
       mx = waypoint.x - this.pos.x;
       mz = waypoint.z - this.pos.z;
+      // Uzun görev yolunda (savaşta değilken) ata bin
+      if (g.autoHunt.settings.autoMount && !this.inCombat && g.questNav.routeLength() > 30) this.mounts.autoMount();
     }
 
     const ml = Math.hypot(mx, mz);
     this.speedNow = 0;
+    // Dörtnala: yalnızca binekte, Shift basılıyken, hareket ederken ve at yorgun değilken
+    const gallop = this.mounts.wantsGallop(input.down('ShiftLeft'), ml > 0.01);
 
     if (this.dash) {
       combat.updateDash(this, dt);
     } else {
       if (ml > 0.01) {
         mx /= ml; mz /= ml;
-        let sp = this.moveSpeed * (input.down('ShiftLeft') ? 1.4 : 1);
+        let sp = this.moveSpeed * (this.mounted ? this.mounts.gallopMult(gallop) : (input.down('ShiftLeft') ? 1.4 : 1));
         if (this.attackT >= 0) sp *= 0.3;
         this.yaw = dampAngle(this.yaw, Math.atan2(mx, mz), 14, dt);
         const travel = waypoint && !auto ? Math.min(sp * dt, ml) : sp * dt;
@@ -378,6 +361,7 @@ export class Player {
           g.particles.emit(this.pos, { count: 3, color: 0x9a8468, speed: 0.6, up: 0.8, life: 0.7, size: 0.45, additive: false, spread: 0.3 });
         }
       }
+      this.mounts.updateStamina(dt, gallop);
       if (wantAttack && this.attackT < 0) combat.startAttack(this);
     }
 
@@ -398,12 +382,9 @@ export class Player {
 
     this.pos.y = g.terrain.getHeight(this.pos.x, this.pos.z);
     this.model.root.position.copy(this.pos);
-    if (this.mounted && this.horse) {
-      this.horse.root.position.copy(this.pos);
-      this.horse.root.rotation.y = this.yaw;
-      this.model.root.position.y = this.pos.y + 0.66;
-      this.horse.update(dt, this.speedNow);
-    }
+    if (this.mounted) this.model.root.position.y = this.pos.y + this.mounts.riderOffset;
+    this.mounts.sync(dt, this.speedNow, gallop);
+    this.pets.update(dt);
     if (this.spin > 0) this.spin = Math.max(0, this.spin - dt * 2.6);
     this.model.root.rotation.y = this.yaw + (this.spin > 0 ? (1 - this.spin) * Math.PI * 4 : 0);
     this.model.update(dt, this.speedNow);

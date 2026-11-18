@@ -8,6 +8,7 @@ import type { Npc } from '../entities/npc';
 import { SaveSystem } from '../systems/save';
 import type { Game } from '../game';
 import { icon } from './icons';
+import { enemyInfoHtml } from './enemyInfo';
 import { Minimap } from './minimap';
 import { Overlay } from './overlay';
 import { Windows } from './windows';
@@ -15,7 +16,7 @@ import { WorldMap } from './worldmap';
 
 import { $, setText, setWidth } from './uiDom';
 import { bindBar, bindTouch } from './uiBindings';
-import { syncHotbarSlot, showTutorial, renderTutorial, finishTutorial, syncAutoHuntButton } from './uiHud';
+import { syncHotbarSlot, showTutorial, renderTutorial, finishTutorial, syncAutoHuntButton, syncMountButton } from './uiHud';
 
 /** Arayüz kökü: başlangıç ekranı, HUD, kayıt günlüğü ve pencere yönetimi. */
 export class UI {
@@ -33,6 +34,8 @@ export class UI {
   hurt = 0;
   slow = 0;
   tutorialStep = 0;
+  enemyInfoOpen = false;
+  enemyInfoKey = '';
   readonly tutorialSteps = [
     { title: 'Diyarı keşfet', text: 'WASD ile yürü, Shift ile hızlan. Zemine tıklayarak da gideceğin yeri seçebilirsin. Dokunmatik ekranda sol çubuğu kullan.' },
     { title: 'Hedef al ve savaş', text: 'Bir düşmana tıklayarak hedef seç; Tab ile yakındaki hedefler arasında geçiş yap. Boşluk ile saldır veya dokunmatik ekrandaki Saldır düğmesine bas.' },
@@ -68,7 +71,9 @@ export class UI {
         <div class="frame target-frame hidden" id="target">
           <div class="tf-name" id="t-name"></div>
           <div class="bar hp"><i id="t-hp"></i><span id="t-hp-t"></span></div>
+          <button class="tf-info" id="t-info" type="button" aria-label="Düşman bilgisi" title="Düşman bilgisi ve düşen eşyalar">!</button>
         </div>
+        <div class="enemy-info hidden" id="enemy-info" role="dialog" aria-label="Düşman bilgisi"></div>
         <div class="mm-wrap">
           <div class="mm-ring"><canvas id="minimap" width="184" height="184"></canvas></div>
           <div class="mm-zooms">
@@ -93,6 +98,7 @@ export class UI {
           <button data-win="char" title="Karakter (C)">${icon('helmet')}<kbd>C</kbd></button>
           <button data-win="inv" title="Envanter (I)">${icon('armor')}<kbd>I</kbd></button>
           <button data-win="quest" title="Görev (J)">${icon('buff')}<kbd>J</kbd></button>
+          <button data-win="pets" title="Evcil Hayvanlar (P)">${icon('paw')}<kbd>P</kbd></button>
           <button data-win="settings" title="Ayarlar (Esc)">${icon('aoe')}<kbd>Esc</kbd></button>
         </div>
         <div class="fps" id="fps"></div>
@@ -123,7 +129,7 @@ export class UI {
     this.start = $('#start');
     this.death = $('#death');
     this.logEl = $('#log');
-    for (const id of ['p-level', 'p-name', 'p-hp', 'p-hp-t', 'p-mp', 'p-mp-t', 'p-buffs', 'target', 't-name', 't-hp', 't-hp-t', 'mm-clock', 'mm-pos', 'tracker', 'tr-title', 'tr-prog', 'tr-status', 'tr-btns', 'hint', 'p-exp', 'p-exp-t', 'fps', 'hurt', 'banner']) {
+    for (const id of ['p-level', 'p-name', 'p-hp', 'p-hp-t', 'p-mp', 'p-mp-t', 'p-buffs', 'target', 't-info', 'enemy-info', 't-name', 't-hp', 't-hp-t', 'mm-clock', 'mm-pos', 'tracker', 'tr-title', 'tr-prog', 'tr-status', 'tr-btns', 'hint', 'p-exp', 'p-exp-t', 'fps', 'hurt', 'banner']) {
       this.el[id] = $(`#${id}`);
     }
     this.windows = new Windows(game, $('#windows'), $('#tooltip'));
@@ -165,6 +171,15 @@ export class UI {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-quest-route]');
       const m = b?.dataset.questRoute;
       if (game.started && (m === 'walk' || m === 'trail' || m === 'auto')) game.questNav.toggle(m);
+    });
+    // Hedef düşmanın bilgi düğmesi ve paneli
+    this.el['t-info'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.enemyInfoOpen = !this.enemyInfoOpen;
+      this.enemyInfoKey = '';
+    });
+    this.el['enemy-info'].addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('[data-ei-close]')) this.enemyInfoOpen = false;
     });
     bindBar(this, $('#hotbar'));
     bindBar(this, $('#hotbar2'));
@@ -242,6 +257,11 @@ export class UI {
           ${icon('sword')}<kbd>H</kbd><span class="auto-word">OTO</span>
         </button>
         <button class="auto-hunt-config" data-auto-settings title="Oto av ayarları" aria-label="Oto av ayarları">⚙</button>
+      </div>
+      <div class="mount-wrap">
+        <button class="hb mount-btn" data-mount-toggle aria-label="Ata bin veya in" aria-pressed="false" title="Ata bin / in (R)">
+          ${icon('horse')}<kbd>R</kbd><span class="mount-word">BİN</span><i class="mount-stam"></i>
+        </button>
       </div>`;
     const fbar = $('#hotbar2');
     fbar.innerHTML = `
@@ -337,6 +357,7 @@ export class UI {
     if (inp.hit('KeyI')) this.windows.toggle('inv');
     if (inp.hit('KeyC')) this.windows.toggle('char');
     if (inp.hit('KeyJ')) this.windows.toggle('quest');
+    if (inp.hit('KeyP')) this.windows.toggle('pets');
     if (inp.hit('KeyH')) g.autoHunt.toggle(p);
     if (inp.hit('KeyM') || inp.hit('KeyB')) this.worldmap.toggle();
     if (inp.hit('KeyN')) g.audio.setMuted(!g.audio.muted);
@@ -350,6 +371,7 @@ export class UI {
     setText(this.el['p-hp-t'], `${Math.ceil(p.hp)} / ${p.maxHp}`);
     setWidth(this.el['p-mp'], p.mp / p.maxMp);
     setText(this.el['p-mp-t'], `${Math.floor(p.mp)} / ${p.maxMp}`);
+    syncMountButton(this);
     setWidth(this.el['p-exp'], p.exp / p.expNeed);
     setText(this.el['p-exp-t'], `Tecrübe %${((p.exp / p.expNeed) * 100).toFixed(1)}`);
 
@@ -359,6 +381,15 @@ export class UI {
       setText(this.el['t-name'], `Sv.${t.def.level} ${t.def.name}`);
       setWidth(this.el['t-hp'], t.hp / t.maxHp);
       setText(this.el['t-hp-t'], `${Math.ceil(t.hp).toLocaleString('tr-TR')} / ${t.maxHp.toLocaleString('tr-TR')}`);
+    }
+    const infoShown = this.enemyInfoOpen && !!t;
+    this.el['enemy-info'].classList.toggle('hidden', !infoShown);
+    if (infoShown && t) {
+      const key = `${t.def.id}|${p.level}|${p.atk}|${p.def}|${p.maxHp}`;
+      if (key !== this.enemyInfoKey) {
+        this.enemyInfoKey = key;
+        this.el['enemy-info'].innerHTML = enemyInfoHtml(t.def, p);
+      }
     }
 
     for (let i = 0; i < this.hbEls.length; i++) {

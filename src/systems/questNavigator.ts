@@ -479,5 +479,13 @@ export class QuestNavigator {
   }
 
   /** Görünen işaret sayısı (tanılama/test). */
+  /** Oyuncudan rotanın sonuna kalan yol (metre). */
+  routeLength() {
+    const p = this.game.player;
+    let len = 0, x = p.pos.x, z = p.pos.z;
+    for (const pt of this.remaining) { len += Math.hypot(pt.x - x, pt.z - z); x = pt.x; z = pt.z; }
+    return len;
+  }
+
   get markCount() { return this.marks && this.marks.visible ? this.marks.count : 0; }
 }

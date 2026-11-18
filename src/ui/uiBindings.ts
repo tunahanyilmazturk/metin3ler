@@ -27,6 +27,10 @@ export function bindBar(ui: UI, hb: HTMLElement) {
       game.autoHunt.toggle(game.player);
       return;
     }
+    if (target.closest('[data-mount-toggle]')) {
+      if (game.started) game.player.toggleMount();
+      return;
+    }
     const s = target.closest('[data-hb]') as HTMLElement | null;
     if (s && game.started) game.player.useHotbar(Number(s.dataset.hb));
   });

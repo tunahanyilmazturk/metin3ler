@@ -84,3 +84,25 @@ export function syncAutoHuntButton(ui: UI) {
   button.setAttribute('aria-pressed', String(auto.enabled));
   button.title = `Oto av: ${auto.enabled ? auto.status : 'kapalı'} (H)`;
 }
+
+/** Alt bardaki binek düğmesi: durum (yaya / çağırılıyor / binekte), çağırma halkası ve dayanıklılık çizgisi. */
+export function syncMountButton(ui: UI) {
+  const button = $('#hotbar [data-mount-toggle]') as HTMLButtonElement | null;
+  if (!button || !ui.game.started) return;
+  const m = ui.game.player.mounts;
+  const state = !m.active ? 'none' : m.state;
+  if (button.dataset.state !== state) {
+    button.dataset.state = state;
+    button.classList.toggle('active', m.mounted);
+    button.classList.toggle('summoning', m.summoning);
+    button.classList.toggle('no-horse', !m.active);
+    button.setAttribute('aria-pressed', String(m.mounted));
+    const word = button.querySelector('.mount-word');
+    if (word) word.textContent = m.mounted ? 'İN' : m.summoning ? '…' : 'BİN';
+    const name = m.def?.name ?? '';
+    button.title = !m.active ? "Atın yok: Ahırdaki Seyis Rahmi'den satın al" : m.mounted ? `${name}: in (R)` : m.summoning ? 'Çağırmayı iptal et (R)' : `${name}: çağır ve bin (R)`;
+  }
+  button.style.setProperty('--p', m.summonProgress.toFixed(3));
+  button.style.setProperty('--s', (m.mounted ? m.staminaFrac : 0).toFixed(3));
+  button.classList.toggle('tired', m.tired);
+}
