@@ -1,5 +1,5 @@
 import { clamp } from '../core/utils';
-import { CLASSES, DEFAULT_CLASS } from '../data/classes';
+import { CLASSES, DEFAULT_CLASS, expForLevel } from '../data/classes';
 import { ITEMS, RARITY_COLORS } from '../data/items';
 import { anchorOf, asStack } from '../data/inventory';
 import { SKILLS } from '../data/skills';
@@ -207,29 +207,52 @@ export class UI {
     const save = SaveSystem.load();
     const cls = DEFAULT_CLASS;
     const hero = CLASSES[cls];
+    const sp = save?.player;
+    const saveCls = sp ? CLASSES[sp.cls] : null;
+    const wpn = sp?.equip.weapon ? ITEMS[sp.equip.weapon.id] : undefined;
+    const expPct = sp ? Math.min(100, Math.round((sp.exp / expForLevel(sp.level)) * 100)) : 0;
     this.start.innerHTML = `
       <div class="start-inner">
-        <div class="title"><span>Kadim Taşların Gölgesinde</span><h1>GÖKDEMİR<br><em>EFSANESİ</em></h1></div>
-        <div class="start-panel">
-          <label for="char-name">Kahramanının adı</label>
-          <input id="char-name" maxlength="16" placeholder="Bir isim yaz" autocomplete="off" />
-          <div class="hero-card"><i>${icon('sword')}</i><div><b>${hero.name}</b><small>${hero.desc}</small></div></div>
-          <div class="start-btns">
-            <button class="primary" id="btn-new">Yeni Maceraya Başla</button>
-            ${save ? '<button id="btn-continue"></button>' : ''}
-          </div>
-          <p class="start-note">WASD ile yürü, Boşluk ile saldır, 1–4 ve F1–F4 ile kısayol çubuğunu kullan. İlerlemen tarayıcına kaydedilir.</p>
+        <div class="title"><span>Kadim Taşların Gölgesinde</span><h1>GÖKDEMİR<br><em>EFSANESİ</em></h1><div class="title-rule" aria-hidden="true"><i></i></div></div>
+        <div class="start-cards">
+          ${sp && saveCls ? `
+          <section class="scard saved">
+            <div class="scard-tag">Kayıtlı Karakter</div>
+            <div class="scard-head">
+              <div class="scard-portrait"><span>${sp.level}</span></div>
+              <div class="scard-id"><b>${sp.name}</b><small>Sv. ${sp.level} · ${saveCls.name}</small></div>
+            </div>
+            <div class="scard-meta">
+              <span class="scard-gold">${icon('coin')} ${Math.floor(sp.gold).toLocaleString('tr-TR')} akçe</span>
+              <span>${wpn ? `${icon(wpn.icon)} ${wpn.name}` : 'Silahsız'}</span>
+            </div>
+            <div class="scard-exp"><i style="width:${expPct}%"></i><span>Tecrübe %${expPct}</span></div>
+            <button class="primary" id="btn-continue">Maceraya Devam Et</button>
+          </section>` : ''}
+          <section class="scard new">
+            <div class="scard-tag">Yeni Macera</div>
+            <label for="char-name">Kahramanının adı</label>
+            <input id="char-name" maxlength="16" placeholder="Bir isim yaz" autocomplete="off" />
+            <div class="hero-card"><i>${icon('sword')}</i><div><b>${hero.name}</b><small>${hero.desc}</small>
+              <div class="hero-stats"><span>Can ${hero.baseHp}</span><span>Mana ${hero.baseMp}</span><span>Menzil ${hero.range} m</span></div>
+            </div></div>
+            <button class="primary" id="btn-new">${save ? 'Yeni Karakter Başlat' : 'Macereye Başla'}</button>
+          </section>
         </div>
+        <p class="start-note">WASD ile yürü, Boşluk ile saldır, 1–4 ve F1–F4 ile kısayol çubuğunu kullan. İlerlemen tarayıcına kaydedilir.</p>
       </div>`;
-    $<HTMLInputElement>('#char-name', this.start).value = save?.player.name ?? '';
-    if (save) {
-      $('#btn-continue', this.start).textContent = `Devam Et — ${save.player.name} (Sv. ${save.player.level} ${hero.name})`;
-    }
+    const nameInput = $<HTMLInputElement>('#char-name', this.start);
+    nameInput.value = save?.player.name ?? '';
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $<HTMLElement>('#btn-new', this.start).click();
+    });
+    // Kayıt varsa birincil eylem devam etmek; odak doğrudan oraya verilir.
+    (save ? $('#btn-continue', this.start) : nameInput).focus();
     this.start.classList.remove('hidden');
     this.start.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
       if (t.id === 'btn-new') {
-        const name = ($<HTMLInputElement>('#char-name').value.trim() || 'Yolcu').slice(0, 16);
+        const name = (nameInput.value.trim() || 'Yolcu').slice(0, 16);
         if (save && !confirm('Kayıtlı karakterin silinip yeni bir oyun başlatılacak. Emin misin?')) return;
         this.start.classList.add('hidden');
         this.game.newGame(name, cls);
